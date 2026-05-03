@@ -3,7 +3,7 @@
   "displayName": "CSV_CUSTOM_PRO",
   "publisher": "csv-custom-pro",
   "description": "无缝显示和编辑CSV文件，支持过滤/排序/搜索",
-  "icon": "images-图片/icon.png",
+  "icon": "icon-扩展图标/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/jonaraphael/csv.git"
@@ -47,7 +47,7 @@
           "PSV",
           "psv"
         ],
-        "configuration": "./config-配置/language-语言配置.json"
+        "configuration": "./langConfig-语言配置/language-语言配置.json"
       },
       {
         "id": "tsv",
@@ -61,7 +61,7 @@
           "TAB",
           "tab"
         ],
-        "configuration": "./config-配置/language-语言配置.json"
+        "configuration": "./langConfig-语言配置/language-语言配置.json"
       }
     ],
     "commands": [
@@ -243,16 +243,16 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "compile:bump": "python3 scripts/bump-version-版本号递增.py",
-    "package:bump": "python3 scripts/bump-version-版本号递增.py --package",
+    "compile:bump": "python3 build-构建脚本/bump-version-版本号递增.py",
+    "package:bump": "python3 build-构建脚本/bump-version-版本号递增.py --package",
     "vscode:prepublish": "npm run compile",
-    "lint": "eslint 'src-源码/**/*.ts'",
-    "package": "node scripts/package-vsix-with-timestamp-打包带时间戳.cjs",
+    "lint": "eslint 'extension-扩展逻辑/**/*.ts'",
+    "package": "node build-构建脚本/package-vsix-with-timestamp-打包带时间戳.cjs",
     "test": "npm run compile && node --test out/test/**/*.test.js",
     "test:webview": "npm run compile && node --test out/test/webview-*.test.js",
-    "test:e2e": "playwright test --config e2e-端到端/playwright.config.ts",
+    "test:e2e": "playwright test --config e2e-浏览器测试/playwright.config.ts",
     "test:full": "npm test && npm run test:e2e && npm run package",
-    "install:cursor": "cursor --install-extension dist-产物/csv-custom-pro-latest.vsix --force"
+    "install:cursor": "cursor --install-extension artifacts-安装包/csv-custom-pro-latest.vsix --force"
   },
   "dependencies": {
     "papaparse": "^5.5.3",

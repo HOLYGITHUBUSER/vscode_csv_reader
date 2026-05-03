@@ -9,7 +9,7 @@
     "types": ["node", "vscode"],
     "skipLibCheck": true
   },
-	"include": ["./src-源码/**/*.ts"],
+	"include": ["./extension-扩展逻辑/**/*.ts"],
 	"exclude": ["node_modules"]
 }
   
