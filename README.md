@@ -12,10 +12,9 @@
 
 ## 试用示例
 
-装好扩展后，可直接在 VS Code / Cursor 打开以下样例体验：
+装好扩展后，可直接在 VS Code / Cursor / Windsurf 打开这个大样例体验：
 
-- [`test-示例/complex_test.csv`](test-示例/complex_test.csv) —— 多语言 / 嵌套引号 / 换行单元格等边界
-- [`test-示例/super_example.csv`](test-示例/super_example.csv) —— 千行数据，体验分块渲染与表头识别
+- [`test-示例/ultimate-50mb-完整压力测试.csv`](test-示例/ultimate-50mb-%E5%AE%8C%E6%95%B4%E5%8E%8B%E5%8A%9B%E6%B5%8B%E8%AF%95.csv) —— 约 50 MiB、64 列，集中覆盖大文件加载、分块渲染、横向滚动、排序、过滤、查找替换、折行、链接和编辑保存。
 
 ## 快速开始
 

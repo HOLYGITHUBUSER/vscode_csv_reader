@@ -3,7 +3,7 @@
  * 验证：
  *   - 任意数据单元格底边都能触发行高拖（不只是序号列）
  *   - 拖动后整行所有单元格 style.height 被设置
- *   - 同时清掉 cell-body 的 max-height（否则在 firstline/compact 模式下视觉不变）
+ *   - 同时清掉 cell-body 的 max-height（否则在紧凑模式下视觉不变）
  *   - 顶部表头那一行的列拖拽不被误伤
  */
 import assert from 'assert';
@@ -18,7 +18,7 @@ describe('Webview row-resize interactions', () => {
       columns: 3,
       addSerialIndex: true,
       fontSize: 14,
-      rowHeightMode: 'firstline',
+      rowHeightMode: 'compact',
       header: { absRow: 0, cells: ['a', 'b', 'c'] },
       body: [
         { absRow: 1, cells: ['alpha',   'one',   'x'] },
@@ -47,7 +47,7 @@ describe('Webview row-resize interactions', () => {
     }
   });
 
-  it('resize lifts the cell-body max-height so firstline mode actually grows', () => {
+  it('resize lifts the cell-body max-height so compact mode actually grows', () => {
     const cell = h.getCell(2, 1)!;
     const body = cell.querySelector<HTMLElement>(':scope > .cell-body');
     assert.ok(body, '.cell-body must exist');

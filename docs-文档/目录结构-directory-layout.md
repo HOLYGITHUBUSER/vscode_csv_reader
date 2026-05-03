@@ -99,9 +99,7 @@ scripts/
 ├─ bump-version-版本号递增.py             patch 号 +1，可选择触发 compile / package
 ├─ package-vsix-with-timestamp-打包带时间戳.cjs   核心：vsce package + 时间戳 +
 │                                            latest.vsix 副本 + BUILD-INFO.md
-├─ round-icon.py                          把 icon.orig.png 加工成 1024×1024 圆角
-└─ gen-huge-fixtures.py                   生成 50k × 60 的压测样本（会覆盖
-                                           test-示例/*.csv；脚本头有 WARNING）
+└─ round-icon.py                          把 icon.orig.png 加工成 1024×1024 圆角
 ```
 
 ## images-图片/
@@ -125,12 +123,11 @@ dist-产物/
 
 ```
 test-示例/
-├─ README.md                  使用说明 + 如何还原、如何压测
-├─ complex_test.csv           多语言 / 嵌套引号 / 换行单元格
-└─ super_example.csv          1109 行，3 行 meta + 表头在第 4 行
+├─ README.md                              使用说明
+└─ ultimate-50mb-完整压力测试.csv          约 50 MiB 的综合压力测试大表格
 ```
 
-目录名提示：**自动化测试用的是 `src-源码/test/` 下的同名文件**。本目录的两份是用户可以随便打开/改动的副本；`scripts/gen-huge-fixtures.py` 会把它们覆盖成压测大样。
+目录名提示：**自动化测试用的是 `src-源码/test/` 下的固定样本**。本目录只放用户可以随便打开/改动的手工压力测试大样例。
 
 ## backup/ · 归档
 

@@ -19,7 +19,7 @@ export interface HarnessConfig {
   body: HarnessRow[];
   addSerialIndex?: boolean;
   fontSize?: number;
-  rowHeightMode?: 'compact' | 'firstline' | 'wrap';
+  rowHeightMode?: 'compact' | 'wrap';
 }
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -73,14 +73,6 @@ function buildDom(cfg: HarnessConfig): string {
   td { overflow: hidden; }
   td .cell-body { display: block; white-space: pre-wrap; }
   table.row-compact td .cell-body { max-height: ${cellBodyMaxHeight}; overflow: hidden; }
-  table.row-firstline td .cell-body {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    max-height: ${cellBodyMaxHeight};
-    overflow: hidden;
-  }
-
   /* Sort indicator, mirrors runtime CSS */
   th[data-col] .sort-btn {
     display: inline-block;
@@ -112,20 +104,33 @@ function buildDom(cfg: HarnessConfig): string {
 </div>
 
 <script id="__csvChunks" type="application/json">[]</script>
+<script id="__csvColumnLabels" type="application/json">${JSON.stringify(cfg.header.cells)}</script>
+<script id="__csvColumnFilters" type="application/json">{}</script>
 
 <!-- Context menu + Floating filter panel + Find widget (main.js's top-level
      querySelectors touch these; shipping empty stubs so init doesn't crash) -->
 <div id="contextMenu" style="display:none"></div>
 <!-- Mirrors CsvEditorProvider.updateWebviewContent()'s float panel markup
      closely enough that event-binding regressions surface in the harness. -->
-<div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;">
+<div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;">
   <span style="font-weight:600;">过滤:</span>
-  <input id="csvGlobalSearch" type="text" placeholder="搜索所有列..." style="height:24px;width:180px;">
   <span id="csvFilterStatus" style="color:#999;font-size:0.85em;"></span>
-  <button id="csvClearFilter" type="button" style="display:none;">清除</button>
+  <select id="csvColumnFilterColumn">
+    ${cfg.header.cells.map((label, i) => `<option value="${i}">${i + 1}. ${label}</option>`).join('')}
+  </select>
+  <select id="csvColumnFilterMode">
+    <option value="contains">包含</option>
+    <option value="equals">等于</option>
+  </select>
+  <input id="csvColumnFilterValue" type="text" placeholder="过滤词，Enter 添加">
+  <label><input id="csvColumnFilterIgnoreCase" type="checkbox" checked>忽略大小写</label>
+  <label><input id="csvColumnFilterIgnoreWhitespace" type="checkbox">忽略空格</label>
+  <button id="csvColumnFilterAdd" type="button">添加</button>
+  <button id="csvColumnFilterClear" type="button">清空</button>
+  <div id="csvColumnFilterChips" style="display:flex;flex-wrap:nowrap;gap:6px;max-width:min(360px,35vw);overflow-x:auto;overflow-y:hidden;"></div>
   <span style="width:1px;height:18px;background:#ccc;margin:0 2px;"></span>
   <span style="font-weight:600;">行高:</span>
-  <button id="csvRowHeightToggle" type="button" data-mode="${rowMode}">${rowMode === 'compact' ? '紧凑' : rowMode === 'firstline' ? '单行折行' : '自然折行'}</button>
+  <button id="csvRowHeightToggle" type="button" data-mode="${rowMode}">${rowMode === 'compact' ? '紧凑' : '自然折行'}</button>
 </div>
 <div id="findReplaceWidget" class="replace-collapsed" style="display:none">
   <div id="replaceToggleGutter">
@@ -162,6 +167,7 @@ function buildDom(cfg: HarnessConfig): string {
  */
 export function writeHarnessHtml(cfg: HarnessConfig): { url: string; dir: string } {
   const mainJs = fs.readFileSync(path.join(REPO_ROOT, 'media-媒体', 'main.js'), 'utf8');
+  const filterPanelJs = fs.readFileSync(path.join(REPO_ROOT, 'media-媒体', 'webviewFilterPanel.js'), 'utf8');
 
   const shim = `
 <script>
@@ -189,6 +195,9 @@ ${shim}
 ${buildDom(cfg)}
 <script>
 ${mainJs}
+</script>
+<script>
+${filterPanelJs}
 </script>
 </body></html>`;
 

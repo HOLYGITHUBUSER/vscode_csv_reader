@@ -47,7 +47,7 @@ webview 和扩展之间**只有 `postMessage` 一条沟通线路**。找不到"�
 1. 在 VS Code / Cursor 里打开本仓库根目录。
 2. 按 **F5**（或 "Run and Debug" 面板里选 `Launch Extension`）。
 3. 它会 `tsc -w` 后打开一个干净的 "Extension Development Host" 窗口，所在窗口自动装本扩展。
-4. 在那个窗口里随便打开 `test-示例/super_example.csv` 试交互。
+4. 在那个窗口里随便打开 `test-示例/ultimate-50mb-完整压力测试.csv` 试交互。
 5. 改完代码，在调试窗口按 `Cmd/Ctrl+R` 就能热重载。
 6. webview 里的 `console.log` 去 **Help → Toggle Developer Tools → Console** 看。
 

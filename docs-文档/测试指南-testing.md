@@ -21,9 +21,20 @@
 npm test                 # 全部 Node 层（约 110 条，含 jsdom）
 npm run test:webview     # 只跑 webview-* 的 jsdom 测试
 npm run test:e2e         # 只跑 Playwright 真浏览器测试
+npm run test:full        # Node + Playwright + 打包 VSIX
+npm run install:cursor   # 把 dist-产物/csv-custom-pro-latest.vsix 安装到 Cursor
 ```
 
 约定：**每次改 `media-媒体/main.js` 或 `src-源码/CsvEditorProvider.ts` 的消息分发前后，两个命令都要绿。**
+
+## 完整手工验收流程
+
+1. 运行 `npm run test:full`，确认 Node 层、jsdom webview、Playwright 和 VSIX 打包全部通过。
+2. 运行 `npm run install:cursor`，然后在 Cursor 执行 `Developer: Reload Window`。
+3. 打开 `test-示例/ultimate-50mb-完整压力测试.csv`。默认 `csv.maxFileSizeMB` 是 100，因此 50 MiB 样例不应弹大文件拦截。
+4. 验证首屏能打开并滚动加载；在右下角列过滤构建器里连续添加两个列条件；确认不会整窗卡死。
+5. 验证排序、行高 `紧凑 ↔ 自然折行`、单元格编辑保存都可用。
+6. 如果要在 Windsurf 验证，使用 Windsurf 自带 CLI 或 UI 的 "Install from VSIX..." 安装同一个 `dist-产物/csv-custom-pro-latest.vsix`。
 
 ## 第 1 层：Node 纯函数单测
 
@@ -58,6 +69,7 @@ npm run test:e2e         # 只跑 Playwright 真浏览器测试
 
 具体覆盖：
 
+- `webview-column-filter.test.ts` · 多列组合过滤弹窗、chip 删除、状态同步
 - `webview-sort-button.test.ts` · 排序按钮三态循环
 - `webview-row-resize.test.ts` · 拖动行底边调整行高
 - `webview-reorder-interactions.test.ts` · 列 / 行 reorder
@@ -79,7 +91,7 @@ npm run test:e2e         # 只跑 Playwright 真浏览器测试
 脚手架 `harness.ts` 做的事：
 
 1. 读 `media-媒体/main.js` 的完整源码。
-2. 拼一段自包含 HTML：provider 风格的 DOM + shim 的 `acquireVsCodeApi`（把 `postMessage` 存到 `window.__posted`）+ 整段内联的 `main.js`。
+2. 拼一段自包含 HTML：provider 风格的 DOM + shim 的 `acquireVsCodeApi`（把 `postMessage` 存到 `window.__posted`）+ 整段内联的 `main.js` 和 `webviewFilterPanel.js`。
 3. 写到 OS 临时目录 `csv-pro-e2e-XXXXXX/index.html`，返回 `file://` URL。
 4. Playwright `page.goto(url)` 加载后就是**真 Chromium 跑真 main.js**，不经 jsdom、也不开 VS Code Electron。
 

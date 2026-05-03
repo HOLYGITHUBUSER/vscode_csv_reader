@@ -1,14 +1,13 @@
 /**
- * E2E for the right-bottom floating panel (#csvFloatPanel): global filter
- * input + row-height cycle button + clear-filter button.
+ * E2E for the right-bottom floating panel (#csvFloatPanel): column filters
+ * + row-height cycle button + clear-filter button.
  *
  * Runs real Chromium clicks / keyboard input against the real media-媒体/main.js.
  * Expected contract (matches CsvEditorProvider's message handler):
- *   - typing into #csvGlobalSearch → postMessage type:'filterSort' (debounced)
+ *   - adding a column condition → postMessage type:'filterSort'
  *   - clicking #csvRowHeightToggle → postMessage type:'setRowHeightMode',
- *     cycling data-mode: compact → firstline → wrap → compact
- *   - after typing a filter, #csvClearFilter becomes visible; clicking it
- *     clears the input and fires another filterSort with empty query
+ *     cycling data-mode: compact → wrap → compact
+ *   - clearing column conditions fires another filterSort with no columnFilters
  */
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
@@ -18,7 +17,7 @@ const cfg = {
   columns: 3,
   addSerialIndex: true,
   fontSize: 14,
-  rowHeightMode: 'firstline' as const,
+  rowHeightMode: 'compact' as const,
   header: { absRow: 0, cells: ['Name', 'Age', 'City'] },
   body: [
     { absRow: 1, cells: ['Alice', '30', 'NYC'] },
@@ -32,7 +31,7 @@ test.afterAll(() => {
   if (harnessDir) try { fs.rmSync(harnessDir, { recursive: true, force: true }); } catch {}
 });
 
-test('floating panel: filter input types and fires filterSort', async ({ page }) => {
+test('floating panel: column filter builder is visible and fires filterSort', async ({ page }) => {
   const { url, dir } = writeHarnessHtml(cfg);
   harnessDir = dir;
 
@@ -49,29 +48,29 @@ test('floating panel: filter input types and fires filterSort', async ({ page })
     fullPage: true,
   });
 
-  const input = page.locator('#csvGlobalSearch');
-  await expect(input).toBeVisible();
+  await expect(page.locator('#csvGlobalSearch')).toHaveCount(0);
+  await expect(page.locator('#csvColumnFilterColumn')).toBeVisible();
+  await expect(page.locator('#csvColumnFilterValue')).toBeVisible();
 
-  // Real key events → should produce at least one filterSort message.
-  await input.click();
-  await input.fill('Alice');
-  // Allow any debounce inside main.js to fire.
-  await page.waitForTimeout(400);
+  await page.locator('#csvColumnFilterColumn').selectOption('0');
+  await page.locator('#csvColumnFilterValue').fill('Alice');
+  await page.locator('#csvColumnFilterAdd').click();
 
   const posted = await page.evaluate(() => (window as any).__posted as any[]);
   const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
   expect(
     filterMsgs.length,
-    `Expected typing into #csvGlobalSearch to emit filterSort; got messages: ${JSON.stringify(posted)}`,
+    `Expected adding a column condition to emit filterSort; got messages: ${JSON.stringify(posted)}`,
   ).toBeGreaterThan(0);
 
-  // Last filterSort should carry the current text ("Alice") somewhere in its payload.
   const last = filterMsgs[filterMsgs.length - 1];
-  const payloadStr = JSON.stringify(last);
-  expect(payloadStr.toLowerCase()).toContain('alice');
+  expect(last.globalSearch).toBe('');
+  expect(last.columnFilters).toEqual({
+    '0': { value: 'Alice', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+  });
 });
 
-test('floating panel: row-height toggle cycles compact → firstline → wrap', async ({ page }) => {
+test('floating panel: row-height toggle cycles compact → wrap', async ({ page }) => {
   const { url, dir } = writeHarnessHtml({ ...cfg, rowHeightMode: 'compact' });
   harnessDir = dir;
 
@@ -87,23 +86,66 @@ test('floating panel: row-height toggle cycles compact → firstline → wrap', 
   await expect(btn).toBeVisible();
   await expect(btn).toHaveAttribute('data-mode', 'compact');
 
-  // Click 1: compact → firstline
-  await btn.click();
-  await expect(btn).toHaveAttribute('data-mode', 'firstline');
-
-  // Click 2: firstline → wrap
+  // Click 1: compact → wrap
   await btn.click();
   await expect(btn).toHaveAttribute('data-mode', 'wrap');
 
-  // Click 3: wrap → compact (full cycle)
+  // Click 2: wrap → compact (full cycle)
   await btn.click();
   await expect(btn).toHaveAttribute('data-mode', 'compact');
 
   // Each click should have emitted a setRowHeightMode message with the new mode.
   const posted = await page.evaluate(() => (window as any).__posted as any[]);
   const modeMsgs = posted.filter(m => m && m.type === 'setRowHeightMode');
-  expect(modeMsgs.length).toBeGreaterThanOrEqual(3);
-  expect(modeMsgs.slice(-3).map(m => m.mode)).toEqual(['firstline', 'wrap', 'compact']);
+  expect(modeMsgs.length).toBeGreaterThanOrEqual(2);
+  expect(modeMsgs.slice(-2).map(m => m.mode)).toEqual(['wrap', 'compact']);
+});
+
+test('floating panel: column filters post combined AND conditions', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+
+  await page.locator('#csvColumnFilterColumn').selectOption('1');
+  await page.locator('#csvColumnFilterValue').fill('30');
+  await page.locator('#csvColumnFilterAdd').click();
+  await page.locator('#csvColumnFilterColumn').selectOption('2');
+  await page.locator('#csvColumnFilterValue').fill('NYC');
+  await page.locator('#csvColumnFilterAdd').click();
+
+  await expect(page.locator('#csvColumnFilterChips .csv-filter-chip')).toHaveCount(2);
+  const posted = await page.evaluate(() => (window as any).__posted as any[]);
+  const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
+  const last = filterMsgs[filterMsgs.length - 1];
+  expect(last.globalSearch).toBe('');
+  expect(last.columnFilters).toEqual({
+    '1': { value: '30', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+    '2': { value: 'NYC', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+  });
+});
+
+test('floating panel: column filter options post match flags', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+
+  await page.locator('#csvColumnFilterColumn').selectOption('2');
+  await page.locator('#csvColumnFilterMode').selectOption('equals');
+  await page.locator('#csvColumnFilterIgnoreCase').uncheck();
+  await page.locator('#csvColumnFilterIgnoreWhitespace').check();
+  await page.locator('#csvColumnFilterValue').fill(' NY C ');
+  await page.locator('#csvColumnFilterAdd').click();
+
+  const posted = await page.evaluate(() => (window as any).__posted as any[]);
+  const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
+  const last = filterMsgs[filterMsgs.length - 1];
+  expect(last.columnFilters).toEqual({
+    '2': { value: 'NY C', mode: 'equals', ignoreCase: false, ignoreWhitespace: true },
+  });
 });
 
 test('filterSortResult message from host rewrites tbody', async ({ page }) => {
@@ -145,35 +187,30 @@ test('filterSortResult message from host rewrites tbody', async ({ page }) => {
   await expect(page.locator('th[data-col="0"]')).not.toHaveClass(/sort-desc/);
 });
 
-test('floating panel: clear button shows after typing and resets filter', async ({ page }) => {
+test('floating panel: clear button resets column filters', async ({ page }) => {
   const { url, dir } = writeHarnessHtml(cfg);
   harnessDir = dir;
 
   await page.goto(url);
   await expect(page.locator('#csv-root')).toBeVisible();
 
-  const input = page.locator('#csvGlobalSearch');
-  const clear = page.locator('#csvClearFilter');
+  const input = page.locator('#csvColumnFilterValue');
+  const clear = page.locator('#csvColumnFilterClear');
 
   // Initially hidden.
   await expect(clear).toBeHidden();
 
+  await page.locator('#csvColumnFilterColumn').selectOption('0');
   await input.fill('Bob');
-  await page.waitForTimeout(400);
+  await page.locator('#csvColumnFilterAdd').click();
   await expect(clear).toBeVisible();
 
   await clear.click();
-  await expect(input).toHaveValue('');
-  // After clear, at least one filterSort with empty-ish payload should exist.
+  await expect(page.locator('#csvColumnFilterChips .csv-filter-chip')).toHaveCount(0);
   const posted = await page.evaluate(() => (window as any).__posted as any[]);
   const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
   expect(filterMsgs.length).toBeGreaterThan(0);
   const last = filterMsgs[filterMsgs.length - 1];
-  // globalSearch (or analogous field) should be empty string after clear.
-  // Accept any of: globalSearch, query, text — we don't want to over-fit the key name.
-  const emptyFields = ['globalSearch', 'query', 'text', 'value']
-    .map(k => (last as any)[k])
-    .filter(v => v !== undefined);
-  expect(emptyFields.length, `clear-filter should publish an empty search field; last msg: ${JSON.stringify(last)}`).toBeGreaterThan(0);
-  for (const v of emptyFields) expect(v).toBe('');
+  expect(last.globalSearch).toBe('');
+  expect(last.columnFilters).toEqual({});
 });

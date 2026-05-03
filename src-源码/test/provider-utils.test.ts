@@ -29,6 +29,72 @@ describe('CsvEditorProvider utility methods', () => {
     assert.deepStrictEqual(widths, [4, 2, 3]);
   });
 
+  it('normalizes column filters to valid non-empty string conditions', () => {
+    const normalized = CsvEditorProvider.__test.normalizeColumnFilters({
+      '0': ' Alice ',
+      '2': { value: ' active ', mode: 'equals', ignoreCase: false, ignoreWhitespace: true },
+      '-1': 'bad',
+      '3.5': 'bad',
+      '4': '',
+      '5': 123,
+      '99': 'out-of-range'
+    }, 3);
+
+    assert.deepStrictEqual(normalized, {
+      '0': { value: 'Alice', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+      '2': { value: 'active', mode: 'equals', ignoreCase: false, ignoreWhitespace: true }
+    });
+  });
+
+  it('applies global search and multiple column filters with AND semantics', () => {
+    const rows = [
+      ['Name', 'City', 'Status'],
+      ['Alice', 'Shanghai', 'active'],
+      ['Alice', 'Beijing', 'active'],
+      ['Bob', 'Shanghai', 'inactive'],
+      ['Cindy', 'Shanghai', 'active']
+    ];
+
+    const filtered = CsvEditorProvider.__test.applyFilterSortToRows(rows, 0, true, {
+      globalSearch: 'alice',
+      columnFilters: {
+        '1': 'shanghai',
+        '2': 'active'
+      },
+      sortCol: -1,
+      sortDir: null
+    });
+
+    assert.deepStrictEqual(filtered, [
+      ['Name', 'City', 'Status'],
+      ['Alice', 'Shanghai', 'active']
+    ]);
+  });
+
+  it('supports equals and ignore-whitespace column filter options', () => {
+    const rows = [
+      ['Name', 'Code'],
+      ['Alpha', 'A B-001'],
+      ['Beta', 'AB-001 '],
+      ['Gamma', 'AB-001-x']
+    ];
+
+    const filtered = CsvEditorProvider.__test.applyFilterSortToRows(rows, 0, true, {
+      globalSearch: '',
+      columnFilters: {
+        '1': { value: 'ab-001', mode: 'equals', ignoreCase: true, ignoreWhitespace: true }
+      },
+      sortCol: -1,
+      sortDir: null
+    });
+
+    assert.deepStrictEqual(filtered, [
+      ['Name', 'Code'],
+      ['Alpha', 'A B-001'],
+      ['Beta', 'AB-001 ']
+    ]);
+  });
+
   it('formatCellContent linkifies allowed URLs when enabled', () => {
     const format = CsvEditorProvider.__test.formatCellContent;
     const html = format('See https://example.com?a=1&b=2 and mailto:user@example.com', true);

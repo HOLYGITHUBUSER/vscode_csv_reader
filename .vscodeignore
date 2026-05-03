@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+.cursor/**
+.github/**
 src-源码/**
 config-配置/eslint-代码检查配置.mjs
 config-配置/vscode-test-测试配置.mjs
@@ -16,6 +18,8 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 out/test/**
+out/src-源码/**
+out/ai-generated-tests-ai生成测试.js
 images-图片/Screenshot_*.png
 images-图片/*.orig.png
 test-示例/**

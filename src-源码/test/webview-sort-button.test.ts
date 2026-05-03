@@ -20,7 +20,7 @@ describe('Webview sort-btn interactions (tri-state)', () => {
       columns: 3,
       addSerialIndex: true,
       fontSize: 14,
-      rowHeightMode: 'firstline',
+      rowHeightMode: 'compact',
       header: { absRow: 0, cells: ['Name', 'Age', 'City'] },
       body: [
         { absRow: 1, cells: ['Alice', '30', 'NYC'] },

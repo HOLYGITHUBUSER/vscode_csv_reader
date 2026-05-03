@@ -13,22 +13,28 @@
 ## 右下角浮动面板
 
 ```
-╭──────────── 全局搜索 ─────────╮ ╭ 行高 ╮
-│ [csvGlobalSearch       ] [×] │ │ 单行折行│
-╰──────────────────────────────╯ ╰───────╯
+╭──────────────────── 列过滤 ────────────────────╮ ╭ 行高 ╮
+│ [选择列] [包含/等于] [过滤词] [忽略大小写] [忽略空格] [添加] [清空] │
+│ [3. sub_category 包含/忽略大小写: hello] [5. status 等于: active] │
+╰────────────────────────────────────────────────╯
 ```
 
 组成（从左到右）：
 
 | 控件                                  | 行为                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------ |
-| `#csvGlobalSearch` 输入框              | 输入即过滤；**200 ms debounce**；按 `Enter` 立即生效。向后端发 `filterSort` 消息    |
-| `#csvClearFilter` 按钮（`×`）           | 仅在搜索框非空时显示；点击清空 + 重新聚焦；发一次空的 `filterSort`                          |
-| `#csvRowHeightToggle` 按钮            | 循环切换 `紧凑 → 单行折行 → 自然折行`；按钮自带 `data-mode` 和中文文字；发 `setRowHeightMode` |
+| `#csvColumnFilterColumn` 下拉框        | 选择要过滤的列，列名来自当前表头；适合宽表和 50MB 大文件                                  |
+| `#csvColumnFilterMode` 下拉框          | 选择匹配方式：`包含` 或 `等于`                                                       |
+| `#csvColumnFilterValue` 输入框         | 输入过滤词；按 `Enter` 或点"添加"生成一个列条件；添加后继续聚焦，方便连续添加                      |
+| `#csvColumnFilterIgnoreCase`          | 勾选后忽略大小写；默认开启，保留旧版包含匹配体验                                            |
+| `#csvColumnFilterIgnoreWhitespace`    | 勾选后会删除单元格和值里的所有空白字符再比较，例如 `A B` 可匹配 `AB`                            |
+| `#csvColumnFilterClear` 按钮           | 有列过滤条件时显示；点击清空全部列条件并重新过滤                                           |
+| `.csv-filter-chip`                    | 单行展示当前列过滤条件；点击 chip 上的 `×` 只删除这一个条件并立即刷新结果；"清空列过滤"一次删除全部列条件 |
+| `#csvRowHeightToggle` 按钮            | 切换 `紧凑 ↔ 自然折行`；按钮自带 `data-mode` 和中文文字；发 `setRowHeightMode` |
 
-服务器端回 `filterSortResult` 时，前端会重建 `tbody`，并同步表头三态排序箭头。
+过滤语义：多个列过滤之间是 `AND`。也就是说，某行必须同时满足每个列条件才会保留。服务器端回 `filterSortResult` 时，前端只重建首个结果分块，后续结果继续按 chunk 加载，并同步列过滤 chips。
 
-> **自动化测试**：见 `e2e-端到端/float-panel.spec.ts`——每个控件都有真 Chromium 的真点击断言。
+> **自动化测试**：见 `src-源码/test/webview-column-filter.test.ts`、`src-源码/test/provider-utils.test.ts` 和 `e2e-端到端/float-panel.spec.ts`。
 
 ## 三态排序按钮
 
@@ -98,8 +104,8 @@
 | `csv.showTrailingEmptyRow` | boolean | true      | 显示末尾空行                         |
 | `csv.separatorMode`        | string  | extension | 分隔符选择模式                        |
 | `csv.defaultSeparator`     | string  | `,`       | 默认分隔符                          |
-| `csv.rowHeightMode`        | string  | compact | 行高模式：compact、firstline、wrap    |
-| `csv.maxFileSizeMB`        | number  | 10        | 文件大小限制（MB），0 表示不限制             |
+| `csv.rowHeightMode`        | string  | compact | 行高模式：compact、wrap              |
+| `csv.maxFileSizeMB`        | number  | 100       | 文件大小限制（MB），0 表示不限制             |
 
 ## 每文件设置
 

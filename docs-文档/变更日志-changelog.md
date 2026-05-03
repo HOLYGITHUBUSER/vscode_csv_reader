@@ -12,7 +12,7 @@
 
 - 右下角浮动面板（过滤输入 + 清除按钮 + 行高切换按钮）**之前没有绑定任何事件**，虽然被 `CsvEditorProvider` 渲染出来但所有点击/输入都是无效的。本版把三个控件 + `filterSortResult` 消息都接上：
   - 过滤输入：200 ms debounce，`Enter` 立即发 `filterSort`。
-  - 行高按钮：`紧凑 → 单行折行 → 自然折行` 循环，发 `setRowHeightMode`。
+  - 行高按钮：支持多种行高模式循环，发 `setRowHeightMode`。
   - 清除按钮：只在输入非空时显示；点击清空并重新聚焦。
   - 后端回 `filterSortResult` 时重建 `tbody`，并同步三态排序指示。
 

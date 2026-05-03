@@ -6,3 +6,6 @@ backup/
 e2e-端到端/test-results/
 e2e-端到端/visual-review/
 playwright-report/
+dist-产物/csv-custom-pro-*.vsix
+!dist-产物/csv-custom-pro-latest.vsix
+test-示例/*.csv

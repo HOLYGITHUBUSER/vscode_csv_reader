@@ -276,6 +276,7 @@ let remoteChunkRequestSeq = 0;
 let pendingEnsureTarget = null;
 let nearBottom = () => false;
 let loadNextChunk = () => false;
+let primeChunkObserver = () => {};
 
 const requestRemoteChunk = () => {
   if (!remoteHasMoreChunks) return;
@@ -337,6 +338,7 @@ if (csvChunks.length || remoteHasMoreChunks) {
     const last = tbody && tbody.querySelector('tr:last-child');
     if (last) { io.observe(last); }
   };
+  primeChunkObserver = prime;
   prime();
 
   // Fallback: scroll-driven loader to ensure progress even if IO misses
@@ -2268,12 +2270,24 @@ window.addEventListener('message', event => {
     try { startCell.focus({ preventScroll: true }); } catch { try { startCell.focus(); } catch {} }
     endCell.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'smooth' });
   } else if (message.type === 'filterSortResult') {
-    // Re-render the tbody from the filtered/sorted rows the provider returned.
-    // This intentionally rebuilds the DOM (chunk state gets dropped) because
-    // the filter/sort result is already a complete row list.
+    // Re-render the first filtered/sorted page. Large results continue through
+    // the same remote chunk protocol as initial rendering, avoiding a giant DOM
+    // rebuild for 50MB-class files.
     const rows = Array.isArray(message.rows) ? message.rows : [];
     const addSerialIndex = !!message.addSerialIndex;
     const tbody = table ? table.querySelector('tbody') : null;
+    csvChunks = [];
+    remoteChunkRequestInFlight = false;
+    remoteChunkRequestedStart = -1;
+    pendingEnsureTarget = null;
+    const nextStart = Number(message.nextChunkStart);
+    if (message.hasRemoteChunks && Number.isInteger(nextStart) && nextStart >= 0) {
+      remoteNextChunkStart = nextStart;
+      remoteHasMoreChunks = true;
+    } else {
+      remoteNextChunkStart = -1;
+      remoteHasMoreChunks = false;
+    }
     if (tbody) {
       const html = rows.map(r => {
         const cells = [];
@@ -2292,6 +2306,8 @@ window.addEventListener('message', event => {
       if (table.classList.contains('row-compact')) {
         applyCompactNewlineMarkers(tbody);
       }
+      applySizeStateToRenderedCells();
+      primeChunkObserver();
     }
     // Sync sort indicator with the authoritative state coming back from host.
     if (typeof message.sortCol === 'number' && message.sortDir) {
@@ -2302,6 +2318,7 @@ window.addEventListener('message', event => {
       currentSortAsc = true;
     }
     try { updateSortHeaderIndicator(); } catch {}
+    try { window.dispatchEvent(new CustomEvent('csvFilterSortResult', { detail: message })); } catch {}
   } else if (message.type === 'findMatchesResult') {
     if (!findReplaceState.open) {
       return;
@@ -2379,105 +2396,9 @@ document.addEventListener('keydown', e => {
 
 try { updateSortHeaderIndicator(); } catch {}
 
-/* ------------------------------------------------------------------------ *
- * Floating panel: global filter input + row-height cycle + clear button.
- *
- * Matches the DOM that CsvEditorProvider.updateWebviewContent emits, and the
- * message protocol the provider already handles:
- *   - filterSort:       { type, globalSearch, columnFilters, sortCol, sortDir }
- *   - setRowHeightMode: { type, mode: 'compact' | 'firstline' | 'wrap' }
- * ------------------------------------------------------------------------ */
-(function initFloatPanel() {
-  const searchInput = document.getElementById('csvGlobalSearch');
-  const clearBtn    = document.getElementById('csvClearFilter');
-  const rhBtn       = document.getElementById('csvRowHeightToggle');
-
-  const ROW_HEIGHT_CYCLE = ['compact', 'firstline', 'wrap'];
-  const ROW_HEIGHT_LABEL = { compact: '紧凑', firstline: '单行折行', wrap: '自然折行' };
-
-  const applyRowHeightClass = mode => {
-    const tbl = document.querySelector('#csv-root table');
-    if (!tbl) return;
-    const prev = ROW_HEIGHT_CYCLE.find(m => tbl.classList.contains(`row-${m}`));
-    for (const m of ROW_HEIGHT_CYCLE) tbl.classList.remove(`row-${m}`);
-    tbl.classList.add(`row-${mode}`);
-    if (mode === 'compact') {
-      applyCompactNewlineMarkers(tbl);
-    } else if (mode !== 'compact' && prev === 'compact') {
-      restoreCompactNewlineMarkers(tbl);
-    }
-  };
-
-  if (rhBtn) {
-    rhBtn.addEventListener('click', () => {
-      const cur  = rhBtn.getAttribute('data-mode') || 'compact';
-      const idx  = ROW_HEIGHT_CYCLE.indexOf(cur);
-      const next = ROW_HEIGHT_CYCLE[(idx + 1) % ROW_HEIGHT_CYCLE.length];
-      rhBtn.setAttribute('data-mode', next);
-      rhBtn.textContent = ROW_HEIGHT_LABEL[next];
-      applyRowHeightClass(next);
-      vscode.postMessage({ type: 'setRowHeightMode', mode: next });
-    });
-  }
-
-  // 初始加载时如果已是紧凑模式，也处理换行符
-  const initMode = rhBtn ? (rhBtn.getAttribute('data-mode') || 'compact') : 'compact';
-  if (initMode === 'compact') applyRowHeightClass('compact');
-
-  // chunk动态加载时，如果当前是紧凑模式，也处理新行的换行符
-  window.addEventListener('csvChunkLoaded', () => {
-    const tbl = document.querySelector('#csv-root table');
-    if (tbl && tbl.classList.contains('row-compact')) {
-      applyCompactNewlineMarkers(tbl);
-    }
-  });
-
-  // Throttle search input to avoid re-filtering on every keystroke for large CSVs.
-  const FILTER_DEBOUNCE_MS = 200;
-  let filterTimer = null;
-  const sendFilter = (globalSearch, immediate) => {
-    const payload = {
-      type: 'filterSort',
-      globalSearch: globalSearch,
-      columnFilters: {},
-      sortCol: (typeof currentSortCol === 'number' ? currentSortCol : -1),
-      sortDir: (currentSortCol === null ? null : (currentSortAsc ? 'asc' : 'desc')),
-    };
-    if (immediate) {
-      vscode.postMessage(payload);
-    } else {
-      if (filterTimer) clearTimeout(filterTimer);
-      filterTimer = setTimeout(() => vscode.postMessage(payload), FILTER_DEBOUNCE_MS);
-    }
-  };
-
-  const syncClearVisibility = () => {
-    if (!clearBtn || !searchInput) return;
-    clearBtn.style.display = searchInput.value.length > 0 ? '' : 'none';
-  };
-
-  if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      syncClearVisibility();
-      sendFilter(searchInput.value, /*immediate*/ false);
-    });
-    // Apply filter immediately on Enter so power-users don't have to wait 200ms.
-    searchInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        if (filterTimer) { clearTimeout(filterTimer); filterTimer = null; }
-        sendFilter(searchInput.value, /*immediate*/ true);
-      }
-    });
-  }
-
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      if (!searchInput) return;
-      searchInput.value = '';
-      syncClearVisibility();
-      if (filterTimer) { clearTimeout(filterTimer); filterTimer = null; }
-      sendFilter('', /*immediate*/ true);
-      searchInput.focus();
-    });
-  }
-})();
+window.CsvWebviewBridge = {
+  postMessage: msg => vscode.postMessage(msg),
+  getSortState: () => ({ currentSortCol, currentSortAsc }),
+  applyCompactNewlineMarkers,
+  restoreCompactNewlineMarkers,
+};

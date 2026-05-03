@@ -40,15 +40,14 @@ describe('Webview row-height mode newline rendering', () => {
     btn.click();
 
     const body = h.getCell(1, 1)!.querySelector<HTMLElement>(':scope > .cell-body')!;
-    assert.strictEqual(btn.getAttribute('data-mode'), 'firstline');
+    assert.strictEqual(btn.getAttribute('data-mode'), 'wrap');
     assert.strictEqual(body.textContent, 'line one\nline two');
     assert.strictEqual(body.hasAttribute('data-orig-html'), false);
   });
 
   it('returning to compact mode after restore reapplies newline markers', () => {
     const btn = h.document.getElementById('csvRowHeightToggle')!;
-    btn.click(); // compact -> firstline
-    btn.click(); // firstline -> wrap
+    btn.click(); // compact -> wrap
     btn.click(); // wrap -> compact
 
     const body = h.getCell(1, 1)!.querySelector<HTMLElement>(':scope > .cell-body')!;

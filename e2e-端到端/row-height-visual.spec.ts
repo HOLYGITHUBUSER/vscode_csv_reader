@@ -31,18 +31,14 @@ test('row-height modes render multiline cells and save review screenshots', asyn
     await table.screenshot({ path: path.join(screenshotDir, 'row-height-compact.png') });
     await expect(cell).toContainText('Line 1↵Line 2↵Line 3');
 
-    await btn.click(); // compact -> firstline
-    await expect(btn).toHaveAttribute('data-mode', 'firstline');
-    await table.screenshot({ path: path.join(screenshotDir, 'row-height-firstline.png') });
-    const firstlineHeight = await cell.evaluate(el => el.getBoundingClientRect().height);
-    await expect(cell).toContainText('Line 1\nLine 2\nLine 3');
-
-    await btn.click(); // firstline -> wrap
+    await btn.click(); // compact -> wrap
     await expect(btn).toHaveAttribute('data-mode', 'wrap');
     await table.screenshot({ path: path.join(screenshotDir, 'row-height-wrap.png') });
     const wrapHeight = await cell.evaluate(el => el.getBoundingClientRect().height);
+    await expect(cell).toContainText('Line 1\nLine 2\nLine 3');
 
-    expect(firstlineHeight).toBeLessThan(wrapHeight);
+    const compactHeight = await page.locator('td[data-row="2"][data-col="1"] .cell-body').evaluate(el => el.getBoundingClientRect().height);
+    expect(compactHeight).toBeLessThan(wrapHeight);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

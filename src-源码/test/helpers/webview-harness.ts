@@ -39,7 +39,7 @@ export interface HarnessConfig {
   /** 传给 root 的 data-fontsize */
   fontSize?: number;
   /** rowHeightMode：对应 table class `row-${mode}`，决定是否有 cell-body max-height */
-  rowHeightMode?: 'compact' | 'firstline' | 'wrap';
+  rowHeightMode?: 'compact' | 'wrap';
 }
 
 export interface Harness {
@@ -115,13 +115,6 @@ function buildHtml(cfg: HarnessConfig): string {
   td { overflow: hidden; }
   td .cell-body { display: block; white-space: pre-wrap; }
   table.row-compact td .cell-body { max-height: ${cellBodyMaxHeight}; overflow: hidden; }
-  table.row-firstline td .cell-body {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    max-height: ${cellBodyMaxHeight};
-    overflow: hidden;
-  }
 </style>
 </head>
 <body>
@@ -132,13 +125,26 @@ function buildHtml(cfg: HarnessConfig): string {
   </table>
 </div>
 <script id="__csvChunks" type="application/json">[]</script>
+<script id="__csvColumnLabels" type="application/json">${JSON.stringify(cfg.header.cells)}</script>
+<script id="__csvColumnFilters" type="application/json">{}</script>
 <div id="contextMenu" style="display:none"></div>
 
 <!-- Floating filter / rowHeight panel（main.js 启动时会 querySelector 它们） -->
 <div id="csvFloatPanel">
-  <input id="csvGlobalSearch" type="text">
   <span id="csvFilterStatus"></span>
-  <button id="csvClearFilter" type="button"></button>
+  <select id="csvColumnFilterColumn">
+    ${cfg.header.cells.map((label, i) => `<option value="${i}">${i + 1}. ${label}</option>`).join('')}
+  </select>
+  <select id="csvColumnFilterMode">
+    <option value="contains">包含</option>
+    <option value="equals">等于</option>
+  </select>
+  <input id="csvColumnFilterValue" type="text">
+  <label><input id="csvColumnFilterIgnoreCase" type="checkbox" checked>忽略大小写</label>
+  <label><input id="csvColumnFilterIgnoreWhitespace" type="checkbox">忽略空格</label>
+  <button id="csvColumnFilterAdd" type="button"></button>
+  <button id="csvColumnFilterClear" type="button"></button>
+  <div id="csvColumnFilterChips"></div>
   <button id="csvRowHeightToggle" type="button" data-mode="${rowMode}"></button>
 </div>
 
@@ -170,6 +176,8 @@ function buildHtml(cfg: HarnessConfig): string {
 export function createHarness(cfg: HarnessConfig): Harness {
   const mainJsPath = path.join(process.cwd(), 'media-媒体', 'main.js');
   const mainJs = fs.readFileSync(mainJsPath, 'utf8');
+  const filterPanelJsPath = path.join(process.cwd(), 'media-媒体', 'webviewFilterPanel.js');
+  const filterPanelJs = fs.readFileSync(filterPanelJsPath, 'utf8');
 
   const html = buildHtml(cfg);
   const dom = new JSDOM(html, {
@@ -234,6 +242,8 @@ export function createHarness(cfg: HarnessConfig): Harness {
   // 把 main.js 以脚本形式注入（相当于 <script>…</script>）。
   const script = new window.Function(mainJs);
   script.call(window);
+  const filterPanelScript = new window.Function(filterPanelJs);
+  filterPanelScript.call(window);
 
   const doc = window.document as Document;
   const table = doc.querySelector('table') as HTMLTableElement;

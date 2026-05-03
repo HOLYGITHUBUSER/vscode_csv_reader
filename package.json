@@ -19,6 +19,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onCustomEditor:csv.editor",
     "onLanguage:csv",
     "onLanguage:tsv",
     "onCommand:csv.toggleExtension",
@@ -204,7 +205,7 @@
         },
         "csv.maxFileSizeMB": {
           "type": "number",
-          "default": 10,
+          "default": 100,
           "minimum": 0,
           "description": "打开文件大小上限（MB）。0禁用限制。超限时提示取消、继续或禁用。"
         },
@@ -212,11 +213,10 @@
           "type": "string",
           "enum": [
             "compact",
-            "firstline",
             "wrap"
           ],
           "default": "compact",
-          "description": "行高模式：'compact' 紧凑（默认，\\n显示为↵、横向截断）；'firstline' 单行折行（保留原文、只露第一行）；'wrap' 自然折行（全展开）。可随时拖动行边界手动调整。"
+          "description": "行高模式：'compact' 紧凑（默认，\\n显示为↵、横向截断）；'wrap' 自然折行（全展开）。可随时拖动行边界手动调整。"
         }
       }
     },
@@ -250,7 +250,9 @@
     "package": "node scripts/package-vsix-with-timestamp-打包带时间戳.cjs",
     "test": "npm run compile && node --test out/test/**/*.test.js",
     "test:webview": "npm run compile && node --test out/test/webview-*.test.js",
-    "test:e2e": "playwright test --config e2e-端到端/playwright.config.ts"
+    "test:e2e": "playwright test --config e2e-端到端/playwright.config.ts",
+    "test:full": "npm test && npm run test:e2e && npm run package",
+    "install:cursor": "cursor --install-extension dist-产物/csv-custom-pro-latest.vsix --force"
   },
   "dependencies": {
     "papaparse": "^5.5.3",

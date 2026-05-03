@@ -1,6 +1,13 @@
 import Papa from 'papaparse';
 import * as vscode from 'vscode';
 import * as path from 'path';
+import {
+  CsvColumnFilterCondition,
+  CsvFilterSortState,
+  applyFilterSortToRows,
+  createDefaultFilterSortState,
+  normalizeColumnFilters
+} from './csvFilterSort';
 
 type SeparatorMode = 'extension' | 'auto' | 'default';
 type SeparatorSettings = {
@@ -58,7 +65,7 @@ class CsvEditorController {
   // Note: Global registry lives on CsvEditorProvider (wrapper)
 
   private static readonly BYTES_PER_MB = 1024 * 1024;
-  private static readonly DEFAULT_MAX_FILE_SIZE_MB = 10;
+  private static readonly DEFAULT_MAX_FILE_SIZE_MB = 100;
   private static readonly LARGE_FILE_CONTINUE_THIS_TIME = 'Continue This Time';
   private static readonly LARGE_FILE_IGNORE_FOREVER = 'Ignore Forever';
 
@@ -69,9 +76,7 @@ class CsvEditorController {
   private separatorCache: { version: number; configKey: string; separator: string } | undefined;
   private isDiffContext = false;
   private chunkRenderState: ChunkRenderState | undefined;
-  private filterSortState: { globalSearch: string; columnFilters: Record<string, string>; sortCol: number; sortDir: 'asc' | 'desc' | null } = {
-    globalSearch: '', columnFilters: {}, sortCol: -1, sortDir: null
-  };
+  private filterSortState: CsvFilterSortState = createDefaultFilterSortState();
   /**
    * Full text of the document taken right before the first sortColumn that
    * followed the most recent non-sort edit. Consumed (and cleared) by
@@ -211,7 +216,7 @@ class CsvEditorController {
         case 'setRowHeightMode': {
           const mode = e.mode === 'compact' ? 'compact'
             : e.mode === 'wrap' ? 'wrap'
-            : 'firstline';
+            : 'compact';
           const cfg = vscode.workspace.getConfiguration('csv');
           await cfg.update('rowHeightMode', mode, vscode.ConfigurationTarget.Global);
           break;
@@ -1456,7 +1461,9 @@ class CsvEditorController {
     const cellPadding = config.get<number>('cellPadding', 4);
     const rawData = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
     const treatHeader = this.getEffectiveHeader(rawData, hiddenRows);
-    const data = this.applyFilterSort(rawData, Math.min(Math.max(0, hiddenRows), rawData.length), treatHeader);
+    const offset = Math.min(Math.max(0, hiddenRows), rawData.length);
+    const data = this.applyFilterSort(rawData, offset, treatHeader);
+    const columnLabels = this.getColumnLabels(rawData, offset, treatHeader);
     const clickableLinks = config.get<boolean>('clickableLinks', true);
     const configuredColumnColorMode = config.get<string>('columnColorMode', 'type');
     const diffUseThemeForeground = config.get<boolean>('diffUseThemeForeground', true);
@@ -1470,10 +1477,10 @@ class CsvEditorController {
     const mouseWheelZoomEnabled = config.get<boolean>('mouseWheelZoom', true);
     const mouseWheelZoomInvert = config.get<boolean>('mouseWheelZoomInvert', false);
     const rowHeightModeRaw = config.get<string>('rowHeightMode', 'compact');
-    const rowHeightMode: 'compact' | 'firstline' | 'wrap' =
+    const rowHeightMode: 'compact' | 'wrap' =
       rowHeightModeRaw === 'compact' ? 'compact'
       : rowHeightModeRaw === 'wrap' ? 'wrap'
-      : 'firstline';
+      : 'compact';
 
     const { tableHtml, chunksJson, colorCss, nextChunkStart, hasRemoteChunks, chunkState } =
       this.generateTableAndChunks(
@@ -1505,7 +1512,9 @@ class CsvEditorController {
       hasRemoteChunks,
       mouseWheelZoomEnabled,
       mouseWheelZoomInvert,
-      rowHeightMode
+      rowHeightMode,
+      columnLabels,
+      columnFilters: this.filterSortState.columnFilters
     });
   }
 
@@ -1737,17 +1746,28 @@ class CsvEditorController {
     hasRemoteChunks: boolean;
     mouseWheelZoomEnabled: boolean;
     mouseWheelZoomInvert: boolean;
-    rowHeightMode: 'compact' | 'firstline' | 'wrap';
+    rowHeightMode: 'compact' | 'wrap';
+    columnLabels: string[];
+    columnFilters: Record<string, CsvColumnFilterCondition | string>;
   }): string {
-    const { webview, nonce, fontFamily, fontSize, cellPadding, separator, tableHtml, chunksJson, extraColumnColorCss, nextChunkStart, hasRemoteChunks, mouseWheelZoomEnabled, mouseWheelZoomInvert, rowHeightMode } = args;
+    const { webview, nonce, fontFamily, fontSize, cellPadding, separator, tableHtml, chunksJson, extraColumnColorCss, nextChunkStart, hasRemoteChunks, mouseWheelZoomEnabled, mouseWheelZoomInvert, rowHeightMode, columnLabels, columnFilters } = args;
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
     // Build script URI using file path for compatibility (older APIs may lack Uri.joinPath)
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(this.context.extensionPath, 'media-媒体', 'main.js'))
     );
+    const filterPanelScriptUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.context.extensionPath, 'media-媒体', 'webviewFilterPanel.js'))
+    );
 
     // Safe separator transport (assumes single character; see assumptions)
     const sepCode = (separator && separator.length > 0) ? separator.codePointAt(0)! : ','.codePointAt(0)!;
+    const columnOptionsHtml = columnLabels.map((label, index) => {
+      const shown = label.trim() || `列 ${index + 1}`;
+      return `<option value="${index}">${this.escapeHtml(`${index + 1}. ${shown}`)}</option>`;
+    }).join('');
+    const columnLabelsJson = JSON.stringify(columnLabels);
+    const columnFiltersJson = JSON.stringify(columnFilters || {});
 
     return `<!DOCTYPE html>
 <html>
@@ -1766,7 +1786,6 @@ class CsvEditorController {
       td { overflow: hidden; }
       td .cell-body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
       table.row-compact td .cell-body { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-height: ${Math.max(18, Math.round(fontSize * 1.4))}px; }
-      table.row-firstline td .cell-body { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; max-height: ${Math.max(18, Math.round(fontSize * 1.4))}px; overflow: hidden; }
       td.editing .cell-body { max-height: none !important; overflow: visible !important; white-space: pre-wrap !important; }
       td.selected, th.selected { background-color: ${isDark ? '#333333' : '#cce0ff'} !important; }
       td.editing, th.editing { overflow: visible !important; white-space: pre-wrap !important; overflow-wrap: anywhere !important; max-width: none !important; }
@@ -2004,6 +2023,12 @@ class CsvEditorController {
       th.sort-desc .sort-btn::before { content: "\\25BC"; }
       #csvFloatPanel:hover,
       #csvFloatPanel:focus-within { opacity: 1; }
+      #csvColumnFilterPopover[hidden] { display: none !important; }
+      #csvFloatPanel > * { flex:0 0 auto; }
+      #csvColumnFilterChips { min-width:0; }
+      .csv-filter-chip { display:inline-flex;align-items:center;gap:4px;max-width:220px;flex:0 0 auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:999px;background:${isDark?'#252525':'#eef3ff'};color:${isDark?'#ddd':'#222'};padding:2px 6px;font-size:0.85em; }
+      .csv-filter-chip span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+      .csv-filter-chip button { border:0;background:transparent;color:inherit;cursor:pointer;font-size:1.1em;line-height:1;padding:0 2px; }
     </style>
   </head>
   <body>
@@ -2011,17 +2036,30 @@ class CsvEditorController {
       ${tableHtml.replace('<table>', `<table class="row-${rowHeightMode}">`)}
     </div>
 
-    <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.92)':'rgba(255,255,255,0.96)'};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0.88;transition:opacity 0.15s ease;font-size:inherit;">
+    <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.92)':'rgba(255,255,255,0.96)'};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0.88;transition:opacity 0.15s ease;font-size:inherit;">
       <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">过滤:</span>
-      <input id="csvGlobalSearch" type="text" placeholder="搜索所有列..." style="height:24px;width:120px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};padding:0 6px;font-size:inherit;outline:none;">
       <span style="color:${isDark?'#888':'#999'};font-size:0.85em;" id="csvFilterStatus"></span>
-      <button id="csvClearFilter" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;display:none;">清除</button>
+      <select id="csvColumnFilterColumn" style="height:24px;min-width:120px;max-width:220px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;">
+        ${columnOptionsHtml}
+      </select>
+      <select id="csvColumnFilterMode" title="匹配方式" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;">
+        <option value="contains">包含</option>
+        <option value="equals">等于</option>
+      </select>
+      <input id="csvColumnFilterValue" type="text" placeholder="过滤词，Enter 添加" style="height:24px;width:150px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};padding:0 6px;font-size:inherit;outline:none;">
+      <label title="匹配时忽略大小写" style="display:inline-flex;align-items:center;gap:3px;color:${isDark?'#ccc':'#333'};font-size:0.9em;"><input id="csvColumnFilterIgnoreCase" type="checkbox" checked>忽略大小写</label>
+      <label title="匹配时删除所有空白字符再比较" style="display:inline-flex;align-items:center;gap:3px;color:${isDark?'#ccc':'#333'};font-size:0.9em;"><input id="csvColumnFilterIgnoreWhitespace" type="checkbox">忽略空格</label>
+      <button id="csvColumnFilterAdd" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;">添加</button>
+      <button id="csvColumnFilterClear" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;display:none;">清空</button>
+      <div id="csvColumnFilterChips" style="display:flex;flex-wrap:nowrap;gap:6px;max-width:min(360px,35vw);overflow-x:auto;overflow-y:hidden;"></div>
       <span style="flex:0 0 auto;width:1px;height:18px;background:${isDark?'#555':'#ccc'};margin:0 2px;"></span>
       <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">行高:</span>
-      <button id="csvRowHeightToggle" type="button" data-mode="${rowHeightMode}" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;" title="点击循环切换 紧凑 → 单行折行 → 自然折行（也可拖动行底边手动调整）">${rowHeightMode === 'compact' ? '紧凑' : rowHeightMode === 'firstline' ? '单行折行' : '自然折行'}</button>
+      <button id="csvRowHeightToggle" type="button" data-mode="${rowHeightMode}" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;" title="点击切换 紧凑 ↔ 自然折行（也可拖动行底边手动调整）">${rowHeightMode === 'compact' ? '紧凑' : '自然折行'}</button>
     </div>
 
     <script id="__csvChunks" type="application/json" nonce="${nonce}">${chunksJson}</script>
+    <script id="__csvColumnLabels" type="application/json" nonce="${nonce}">${this.escapeHtml(columnLabelsJson)}</script>
+    <script id="__csvColumnFilters" type="application/json" nonce="${nonce}">${this.escapeHtml(columnFiltersJson)}</script>
 
     <div id="findReplaceWidget" class="replace-collapsed" role="group" aria-label="Find and Replace">
       <div id="replaceToggleGutter" class="fr-gutter">
@@ -2066,6 +2104,7 @@ class CsvEditorController {
     <div id="contextMenu"></div>
 
     <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script nonce="${nonce}" src="${filterPanelScriptUri}"></script>
   </body>
 </html>`;
   }
@@ -2108,6 +2147,15 @@ class CsvEditorController {
 
   private getHiddenRows(): number {
     return CsvEditorProvider.getHiddenRowsForUri(this.context, this.document.uri);
+  }
+
+  private getColumnLabels(data: string[][], offset: number, hasHeader: boolean): string[] {
+    const header = hasHeader && data[offset] ? data[offset] : undefined;
+    const maxCols = data.reduce((max, row) => Math.max(max, row.length), 0);
+    return Array.from({ length: maxCols }, (_, index) => {
+      const label = header?.[index]?.trim();
+      return label || `列 ${index + 1}`;
+    });
   }
 
   private escapeHtml(text: string): string {
@@ -2154,8 +2202,7 @@ class CsvEditorController {
   ): void {
     this.filterSortState = {
       globalSearch: typeof globalSearch === 'string' ? globalSearch : '',
-      columnFilters: (columnFilters && typeof columnFilters === 'object' && !Array.isArray(columnFilters))
-        ? columnFilters as Record<string, string> : {},
+      columnFilters: normalizeColumnFilters(columnFilters),
       sortCol: typeof sortCol === 'number' ? sortCol : -1,
       sortDir: (sortDir === 'asc' || sortDir === 'desc') ? sortDir : null
     };
@@ -2179,20 +2226,44 @@ class CsvEditorController {
 
     const rawData = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
     const treatHeader = this.getEffectiveHeader(rawData, hiddenRows);
-    const data = this.applyFilterSort(rawData, Math.min(Math.max(0, hiddenRows), rawData.length), treatHeader);
 
     const offset = Math.min(Math.max(0, hiddenRows), rawData.length);
+    const data = this.applyFilterSort(rawData, offset, treatHeader);
+    const columnLabels = this.getColumnLabels(rawData, offset, treatHeader);
     const addSerialIndex = CsvEditorProvider.getSerialIndexForUri(this.context, this.document.uri);
     const showTrailingEmptyRow = config.get<boolean>('showTrailingEmptyRow', true);
+    const configuredColumnColorMode = config.get<string>('columnColorMode', 'type');
+    const configuredColumnColorPalette = config.get<string>('columnColorPalette', 'default');
+    const columnColorMode = CsvEditorController.resolveEffectiveColumnColorMode(
+      configuredColumnColorMode,
+      this.isDiffContext,
+      config.get<boolean>('diffUseThemeForeground', true)
+    );
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
+    const chunkMeta = this.generateTableAndChunks(
+      data,
+      treatHeader,
+      addSerialIndex,
+      hiddenRows,
+      clickableLinks,
+      columnColorMode,
+      configuredColumnColorPalette,
+      showTrailingEmptyRow,
+      0
+    );
+    this.chunkRenderState = chunkMeta.chunkState;
 
     const bodyStart = treatHeader ? offset + 1 : offset;
     const bodyRows = data.slice(bodyStart);
-    const includeTrailingEmptyRow = showTrailingEmptyRow || bodyRows.length === 0;
+    const initialRowCount = this.chunkRenderState
+      ? Math.min(this.chunkRenderState.chunkRows, bodyRows.length)
+      : bodyRows.length;
+    const initialBodyRows = bodyRows.slice(0, initialRowCount);
+    const includeTrailingEmptyRow = !this.chunkRenderState && (showTrailingEmptyRow || bodyRows.length === 0);
 
     const rows: Array<{ cells: Array<{ value: string; rendered: string }>; absRow: number; displayIdx: number }> = [];
-    for (let r = 0; r < bodyRows.length; r++) {
-      const row = bodyRows[r];
+    for (let r = 0; r < initialBodyRows.length; r++) {
+      const row = initialBodyRows[r];
       const absRow = bodyStart + r;
       const cells = row.map(cell => ({
         value: cell || '',
@@ -2202,10 +2273,10 @@ class CsvEditorController {
     }
 
     if (includeTrailingEmptyRow) {
-      const absRow = bodyStart + bodyRows.length;
+      const absRow = bodyStart + initialBodyRows.length;
       const numCols = rawData.reduce((max, r) => Math.max(max, r.length), 0) || 1;
       const cells = Array.from({ length: numCols }, () => ({ value: '', rendered: '' }));
-      rows.push({ cells, absRow, displayIdx: bodyRows.length + 1 });
+      rows.push({ cells, absRow, displayIdx: initialBodyRows.length + 1 });
     }
 
     this.currentWebviewPanel.webview.postMessage({
@@ -2214,43 +2285,16 @@ class CsvEditorController {
       sortCol: this.filterSortState.sortCol,
       sortDir: this.filterSortState.sortDir,
       addSerialIndex,
-      isDark
+      isDark,
+      columnLabels,
+      columnFilters: this.filterSortState.columnFilters,
+      nextChunkStart: chunkMeta.nextChunkStart,
+      hasRemoteChunks: chunkMeta.hasRemoteChunks
     });
   }
 
   private applyFilterSort(data: string[][], offset: number, hasHeader: boolean): string[][] {
-    const fs = this.filterSortState;
-    const noFilter = !fs.globalSearch && Object.values(fs.columnFilters).every(v => !v);
-    const noSort = fs.sortCol < 0 || !fs.sortDir;
-    if (noFilter && noSort) return data;
-
-    const bodyStart = hasHeader ? offset + 1 : offset;
-    const headerSlice = hasHeader ? data.slice(offset, offset + 1) : [];
-    let body = data.slice(bodyStart);
-
-    if (fs.globalSearch) {
-      const q = fs.globalSearch.toLowerCase();
-      body = body.filter(row => row.some(cell => (cell || '').toLowerCase().includes(q)));
-    }
-    for (const [colStr, filterText] of Object.entries(fs.columnFilters)) {
-      if (!filterText) continue;
-      const colIdx = parseInt(colStr, 10);
-      const q = filterText.toLowerCase();
-      body = body.filter(row => ((row[colIdx] || '').toLowerCase().includes(q)));
-    }
-
-    if (!noSort) {
-      const colIdx = fs.sortCol;
-      const dir = fs.sortDir;
-      body.sort((a, b) => {
-        const valA = a[colIdx] || '';
-        const valB = b[colIdx] || '';
-        const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
-        return dir === 'asc' ? cmp : -cmp;
-      });
-    }
-
-    return [...data.slice(0, offset), ...headerSlice, ...body];
+    return applyFilterSortToRows(data, offset, hasHeader, this.filterSortState);
   }
 
   private linkifyUrls(escapedText: string): string {
@@ -2902,6 +2946,17 @@ export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
     computeColumnWidths(data: string[][]): number[] {
       const c: any = new (CsvEditorController as any)({} as any);
       return c.computeColumnWidths(data);
+    },
+    normalizeColumnFilters(columnFilters: unknown, maxColumns?: number): Record<string, CsvColumnFilterCondition> {
+      return normalizeColumnFilters(columnFilters, maxColumns);
+    },
+    applyFilterSortToRows(
+      data: string[][],
+      offset: number,
+      hasHeader: boolean,
+      filterSortState: CsvFilterSortState
+    ): string[][] {
+      return applyFilterSortToRows(data, offset, hasHeader, filterSortState);
     },
     reorderIndexOrder(length: number, indices: number[], beforeIndex: number): number[] {
       const c: any = new (CsvEditorController as any)({} as any);

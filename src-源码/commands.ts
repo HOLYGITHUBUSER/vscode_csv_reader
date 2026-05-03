@@ -192,12 +192,12 @@ export function registerCsvCommands(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('csv.toggleRowHeightMode', async () => {
       const config = vscode.workspace.getConfiguration('csv');
       const current = config.get<string>('rowHeightMode', 'compact');
-      const modes: Array<'compact' | 'firstline' | 'wrap'> = ['compact', 'firstline', 'wrap'];
+      const modes: Array<'compact' | 'wrap'> = ['compact', 'wrap'];
       const currentIndex = modes.indexOf(current as any);
       const nextIndex = (currentIndex + 1) % modes.length;
       const nextMode = modes[nextIndex];
       await config.update('rowHeightMode', nextMode, vscode.ConfigurationTarget.Global);
-      const label = nextMode === 'compact' ? '紧凑' : nextMode === 'firstline' ? '单行折行' : '自然折行';
+      const label = nextMode === 'compact' ? '紧凑' : '自然折行';
       vscode.window.showInformationMessage(`CSV: 行高模式已切换为 ${label}`);
       CsvEditorProvider.editors.forEach(ed => ed.refresh());
     })

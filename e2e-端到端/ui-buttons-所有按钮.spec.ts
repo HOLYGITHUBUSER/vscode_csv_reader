@@ -12,7 +12,7 @@ const cfg = {
   columns: 3,
   addSerialIndex: true,
   fontSize: 14,
-  rowHeightMode: 'firstline' as const,
+  rowHeightMode: 'compact' as const,
   header: { absRow: 0, cells: ['Name', 'Age', 'City'] },
   body: [
     { absRow: 1, cells: ['Alice', '30', 'NYC'] },
@@ -52,47 +52,46 @@ test.describe('所有UI按钮验证', () => {
 
   // ===== 浮动面板按钮 =====
 
-  test('过滤输入框 - 可见且可输入', async ({ page }) => {
-    const input = page.locator('#csvGlobalSearch');
+  test('列过滤输入框 - 可见且可添加条件', async ({ page }) => {
+    const input = page.locator('#csvColumnFilterValue');
     await expect(input).toBeVisible();
+    await expect(page.locator('#csvGlobalSearch')).toHaveCount(0);
     await input.click();
     await input.fill('Alice');
-    await page.waitForTimeout(400);
+    await page.locator('#csvColumnFilterAdd').click();
     const posted = await getPosted(page);
     const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
     expect(filterMsgs.length, '输入过滤词后应发出filterSort消息').toBeGreaterThan(0);
   });
 
-  test('清除过滤按钮 - 输入后出现，点击后清空', async ({ page }) => {
-    const input = page.locator('#csvGlobalSearch');
-    const clear = page.locator('#csvClearFilter');
+  test('清除过滤按钮 - 添加条件后出现，点击后清空', async ({ page }) => {
+    const input = page.locator('#csvColumnFilterValue');
+    const clear = page.locator('#csvColumnFilterClear');
 
     // 初始隐藏
     await expect(clear).toBeHidden();
 
-    // 输入后出现
     await input.fill('Bob');
-    await page.waitForTimeout(400);
+    await page.locator('#csvColumnFilterAdd').click();
     await expect(clear).toBeVisible();
 
     // 点击后清空
     await clear.click();
-    await expect(input).toHaveValue('');
+    await expect(page.locator('#csvColumnFilterChips .csv-filter-chip')).toHaveCount(0);
   });
 
-  test('行高切换按钮 - 三态循环', async ({ page }) => {
+  test('行高切换按钮 - 两态循环', async ({ page }) => {
     const btn = page.locator('#csvRowHeightToggle');
     await expect(btn).toBeVisible();
-    // harness初始mode是firstline
-    await expect(btn).toHaveAttribute('data-mode', 'firstline');
+    // harness初始mode是compact
 
-    // firstline → wrap → compact → firstline
+    await expect(btn).toHaveAttribute('data-mode', 'compact');
+
+    // compact → wrap → compact
     await btn.click();
     await expect(btn).toHaveAttribute('data-mode', 'wrap');
     await btn.click();
     await expect(btn).toHaveAttribute('data-mode', 'compact');
-    await btn.click();
-    await expect(btn).toHaveAttribute('data-mode', 'firstline');
   });
 
   // ===== 排序按钮 =====
