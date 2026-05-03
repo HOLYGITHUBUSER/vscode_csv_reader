@@ -176,6 +176,8 @@ function buildHtml(cfg: HarnessConfig): string {
 export function createHarness(cfg: HarnessConfig): Harness {
   const mainJsPath = path.join(process.cwd(), 'media-媒体', 'main.js');
   const mainJs = fs.readFileSync(mainJsPath, 'utf8');
+  const findReplaceJsPath = path.join(process.cwd(), 'media-媒体', 'webviewFindReplace.js');
+  const findReplaceJs = fs.readFileSync(findReplaceJsPath, 'utf8');
   const filterPanelJsPath = path.join(process.cwd(), 'media-媒体', 'webviewFilterPanel.js');
   const filterPanelJs = fs.readFileSync(filterPanelJsPath, 'utf8');
 
@@ -240,6 +242,8 @@ export function createHarness(cfg: HarnessConfig): Harness {
   });
 
   // 把 main.js 以脚本形式注入（相当于 <script>…</script>）。
+  const findReplaceScript = new window.Function(findReplaceJs);
+  findReplaceScript.call(window);
   const script = new window.Function(mainJs);
   script.call(window);
   const filterPanelScript = new window.Function(filterPanelJs);

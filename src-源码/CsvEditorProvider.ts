@@ -2,63 +2,49 @@ import Papa from 'papaparse';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import {
+  escapeCss,
+  escapeHtml,
+  estimateColumnDataType,
+  formatCellContent,
+  getColumnColor,
+  getMultilineCellTitleAttr,
+  hslToHex,
+  isAllowedExternalScheme,
+  isAllowedExternalUrl,
+  isDate,
+  linkifyUrls
+} from './csvCellFormat';
+import {
   CsvColumnFilterCondition,
   CsvFilterSortState,
   applyFilterSortToRows,
   createDefaultFilterSortState,
   normalizeColumnFilters
 } from './csvFilterSort';
-
-type SeparatorMode = 'extension' | 'auto' | 'default';
-type SeparatorSettings = {
-  mode: SeparatorMode;
-  defaultSeparator: string;
-  byExtension: Record<string, string>;
-};
-type CsvFieldSpan = {
-  start: number;
-  end: number;
-  quoted: boolean;
-};
-type PasteSelectionBounds = {
-  minRow: number;
-  maxRow: number;
-  minCol: number;
-  maxCol: number;
-  rectangular: boolean;
-};
-type PastePlan = {
-  startRow: number;
-  startCol: number;
-  endRow: number;
-  endCol: number;
-  fillSelection: boolean;
-};
-type PasteApplyResult = {
-  changed: boolean;
-  structuralChange: boolean;
-  updates: Array<{ row: number; col: number; value: string }>;
-  plan: PastePlan;
-};
-type ChunkRenderState = {
-  startAbs: number;
-  allRows: string[][];
-  allRowsCount: number;
-  chunkRows: number;
-  includeTrailingEmptyRow: boolean;
-  addSerialIndex: boolean;
-  numColumns: number;
-  columnWidths: number[];
-  columnColors: string[];
-  clickableLinks: boolean;
-  isDark: boolean;
-  serialIndexWidthCh: number;
-};
-type ChunkResponse = {
-  html: string;
-  nextStart: number;
-  done: boolean;
-};
+import { applyFieldUpdatesPreservingFormat } from './csvFormat';
+import {
+  generateTableAndChunks as generateCsvTableAndChunks,
+  renderChunkFromState as renderCsvChunkFromState
+} from './csvRender';
+import {
+  BUILTIN_SEPARATORS_BY_EXTENSION,
+  DEFAULT_SEPARATOR as DEFAULT_CSV_SEPARATOR,
+  DEFAULT_SEPARATOR_MODE as DEFAULT_CSV_SEPARATOR_MODE,
+  getSeparatorSettings,
+  normalizeExtension,
+  normalizeSeparator,
+  resolveInheritedSeparator,
+  serializeSeparatorSettings
+} from './csvSeparator';
+import {
+  ChunkRenderState,
+  ChunkResponse,
+  PasteApplyResult,
+  PastePlan,
+  PasteSelectionBounds,
+  SeparatorMode,
+  SeparatorSettings
+} from './csvTypes';
 
 // Per-document controller. Manages one webview + document.
 class CsvEditorController {
@@ -793,45 +779,10 @@ class CsvEditorController {
     if (!Number.isInteger(start) || start < 0) {
       return { html: '', nextStart: -1, done: true };
     }
-
-    if (start < state.allRowsCount) {
-      const end = Math.min(start + state.chunkRows, state.allRowsCount);
-      const html = state.allRows.slice(start, end).map((row, localR) => {
-        const absRow = state.startAbs + start + localR;
-        const displayIdx = start + localR + 1;
-        let cells = '';
-        for (let cIdx = 0; cIdx < state.numColumns; cIdx++) {
-          const rawValue = row[cIdx] || '';
-          const safe = this.formatCellContent(rawValue, state.clickableLinks);
-          const titleAttr = this.getMultilineCellTitleAttr(rawValue);
-          cells += `<td tabindex="0" style="min-width:${Math.min(state.columnWidths[cIdx] || 0, 100)}ch;max-width:100ch;border:1px solid ${state.isDark ? '#555' : '#ccc'};color:${state.columnColors[cIdx]};overflow:hidden;"${titleAttr} data-row="${absRow}" data-col="${cIdx}"><div class="cell-body" style="white-space: pre-wrap; overflow-wrap: anywhere;">${safe}</div></td>`;
-        }
-        const idxCell = state.addSerialIndex
-          ? `<td tabindex="0" style="min-width:${state.serialIndexWidthCh}ch;max-width:${state.serialIndexWidthCh}ch;border:1px solid ${state.isDark ? '#555' : '#ccc'};color:#888;" data-row="${absRow}" data-col="-1">${displayIdx}</td>`
-          : '';
-        return `<tr>${idxCell}${cells}</tr>`;
-      }).join('');
-
-      if (end < state.allRowsCount) {
-        return { html, nextStart: end, done: false };
-      }
-      if (state.includeTrailingEmptyRow) {
-        return { html, nextStart: state.allRowsCount, done: false };
-      }
-      return { html, nextStart: -1, done: true };
-    }
-
-    if (start === state.allRowsCount && state.includeTrailingEmptyRow) {
-      const virtualAbs = state.startAbs + state.allRowsCount;
-      const displayIdx = state.allRowsCount + 1;
-      const idxCell = state.addSerialIndex
-        ? `<td tabindex="0" style="min-width:${state.serialIndexWidthCh}ch;max-width:${state.serialIndexWidthCh}ch;border:1px solid ${state.isDark ? '#555' : '#ccc'};color:#888;" data-row="${virtualAbs}" data-col="-1">${displayIdx}</td>`
-        : '';
-      const dataCells = Array.from({ length: state.numColumns }, (_, i) => `<td tabindex="0" style="min-width:${Math.min(state.columnWidths[i] || 0, 100)}ch;max-width:100ch;border:1px solid ${state.isDark ? '#555' : '#ccc'};color:${state.columnColors[i]};overflow:hidden;" data-row="${virtualAbs}" data-col="${i}"></td>`).join('');
-      return { html: `<tr>${idxCell}${dataCells}</tr>`, nextStart: -1, done: true };
-    }
-
-    return { html: '', nextStart: -1, done: true };
+    return renderCsvChunkFromState(state, start, {
+      formatCellContent: (text, linkify) => this.formatCellContent(text, linkify),
+      getMultilineCellTitleAttr: text => this.getMultilineCellTitleAttr(text)
+    });
   }
 
   private async requestChunk(rawStart: unknown, requestId: unknown): Promise<void> {
@@ -1536,193 +1487,25 @@ class CsvEditorController {
     hasRemoteChunks: boolean;
     chunkState: ChunkRenderState | undefined;
   } {
-    let headerFlag = treatHeader;
-    const totalRows = data.length;
-    const offset = Math.min(Math.max(0, hiddenRows), totalRows);
-
-    const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
-    let headerRow: string[] = [];
-    let bodyData: string[][] = [];
-    if (totalRows === 0 || offset >= totalRows) {
-      headerFlag = false;
-      bodyData = [];
-    } else if (headerFlag) {
-      headerRow = data[offset];
-      bodyData = data.slice(offset + 1);
-    } else {
-      bodyData = data.slice(offset);
-    }
-    const visibleForWidth = headerFlag ? [headerRow, ...bodyData] : bodyData;
-    let numColumns = visibleForWidth.reduce((max, row) => Math.max(max, row.length), 0);
-    if (numColumns === 0) numColumns = 1; // ensure at least 1 column for the virtual row
-
-    const columnData = Array.from({ length: numColumns }, (_, i) => bodyData.map(row => row[i] || ''));
-    const columnTypes = columnData.map(col => this.estimateColumnDataType(col));
-    const useThemeForeground = columnColorMode === 'theme';
-    const palette = columnColorPalette === 'cool'
-      ? 'cool'
-      : (columnColorPalette === 'warm' ? 'warm' : 'default');
-    const columnColors = useThemeForeground
-      ? Array.from({ length: numColumns }, () => 'var(--vscode-editor-foreground)')
-      : columnTypes.map((type, i) => this.getColumnColor(type, isDark, i, palette));
-    const columnWidths = this.computeColumnWidths(visibleForWidth);
-
-    const BASE_CHUNK_ROWS = 1000;
-    const MAX_CELLS_PER_CHUNK = 20000;
-    const MIN_CHUNK_ROWS = 10;
-    const allRows = headerFlag ? data.slice(offset + 1) : data.slice(offset);
-    const allRowsCount = allRows.length; // preserve total before any truncation
-    const chunkRows = Math.max(
-      MIN_CHUNK_ROWS,
-      Math.min(BASE_CHUNK_ROWS, Math.floor(MAX_CELLS_PER_CHUNK / Math.max(1, numColumns)))
-    );
-    // Always keep one editable row for fully empty views; otherwise allow disabling the
-    // trailing virtual row via settings.
-    const includeTrailingEmptyRow = showTrailingEmptyRow || allRowsCount === 0;
-    const serialIndexMaxDisplay = includeTrailingEmptyRow ? allRowsCount + 1 : allRowsCount;
-    const serialIndexWidthCh = Math.max(4, String(Math.max(1, serialIndexMaxDisplay)).length + 1);
-    const chunks: string[] = [];
-    const chunked = allRowsCount > chunkRows;
-    let nextChunkStart = -1;
-    const safeMaxSerializedChunks = Number.isFinite(maxSerializedChunks)
-      ? Math.max(0, Math.trunc(maxSerializedChunks))
-      : 0;
-    let serializedChunkCount = 0;
-
-    if (chunked) {
-      for (let i = chunkRows; i < allRowsCount; i += chunkRows) {
-        if (serializedChunkCount >= safeMaxSerializedChunks) {
-          nextChunkStart = i;
-          break;
-        }
-        const htmlChunk = allRows.slice(i, i + chunkRows).map((row, localR) => {
-          const startAbs = headerFlag ? offset + 1 : offset;
-          const absRow = startAbs + i + localR;
-          const displayIdx = i + localR + 1; // numbering relative to first visible data row
-          let cells = '';
-          for (let cIdx = 0; cIdx < numColumns; cIdx++) {
-            const rawValue = row[cIdx] || '';
-            const safe = this.formatCellContent(rawValue, clickableLinks);
-            const titleAttr = this.getMultilineCellTitleAttr(rawValue);
-            cells += `<td tabindex="0" style="min-width:${Math.min(columnWidths[cIdx]||0,100)}ch;max-width:100ch;border:1px solid ${isDark?'#555':'#ccc'};color:${columnColors[cIdx]};overflow:hidden;"${titleAttr} data-row="${absRow}" data-col="${cIdx}"><div class="cell-body" style="white-space: pre-wrap; overflow-wrap: anywhere;">${safe}</div></td>`;
-          }
-
-          return `<tr>${
-            addSerialIndex ? `<td tabindex="0" style="min-width:${serialIndexWidthCh}ch;max-width:${serialIndexWidthCh}ch;border:1px solid ${isDark?'#555':'#ccc'};color:#888;" data-row="${absRow}" data-col="-1">${displayIdx}</td>` : ''
-          }${cells}</tr>`;
-        }).join('');
-
-        chunks.push(htmlChunk);
-        serializedChunkCount++;
+    return generateCsvTableAndChunks({
+      data,
+      treatHeader,
+      addSerialIndex,
+      hiddenRows,
+      clickableLinks,
+      columnColorMode,
+      columnColorPalette,
+      showTrailingEmptyRow,
+      maxSerializedChunks,
+      isDark: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark,
+      helpers: {
+        formatCellContent: (text, linkify) => this.formatCellContent(text, linkify),
+        getMultilineCellTitleAttr: text => this.getMultilineCellTitleAttr(text),
+        computeColumnWidths: rows => this.computeColumnWidths(rows),
+        estimateColumnDataType: column => this.estimateColumnDataType(column),
+        getColumnColor: (type, isDark, columnIndex, palette) => this.getColumnColor(type, isDark, columnIndex, palette)
       }
-    }
-
-    const colorCss = useThemeForeground
-      ? ''
-      : columnColors.map((hex, i) => `td[data-col="${i}"], th[data-col="${i}"] { color: ${hex}; }`).join('');
-
-    let tableHtml = `<table>`;
-    if (headerFlag) {
-      tableHtml += `<thead><tr>${
-        addSerialIndex
-          ? `<th tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; color: #888;"></th>`
-          : ''
-      }`;
-      for (let i = 0; i < numColumns; i++) {
-        const safe = this.formatCellContent(headerRow[i] || '', clickableLinks);
-        tableHtml += `<th tabindex="0" style="min-width: max(${Math.min(columnWidths[i] || 0, 100)}ch, 60px); max-width: 100ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; color: ${columnColors[i]}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;" data-row="${offset}" data-col="${i}"><span class="th-content"><span class="th-label">${safe}</span><span class="sort-btn" data-sort-btn="1" role="button" aria-label="Sort column" title="点击切换：A-Z → Z-A → 原始"></span></span></th>`;
-      }
-      tableHtml += `</tr></thead><tbody>`;
-      const initialBodyRows = chunked ? allRows.slice(0, chunkRows) : allRows;
-      initialBodyRows.forEach((row, r) => {
-        tableHtml += `<tr>${
-          addSerialIndex
-            ? `<td tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: #888;" data-row="${offset + 1 + r}" data-col="-1">${r + 1}</td>`
-            : ''
-        }`;
-        for (let i = 0; i < numColumns; i++) {
-          const rawValue = row[i] || '';
-          const safe = this.formatCellContent(rawValue, clickableLinks);
-          const titleAttr = this.getMultilineCellTitleAttr(rawValue);
-          tableHtml += `<td tabindex="0" style="min-width: ${Math.min(columnWidths[i] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: ${columnColors[i]}; overflow: hidden;"${titleAttr} data-row="${offset + 1 + r}" data-col="${i}"><div class="cell-body" style="white-space: pre-wrap; overflow-wrap: anywhere;">${safe}</div></td>`;
-        }
-        tableHtml += `</tr>`;
-      });
-      if (!chunked && includeTrailingEmptyRow) {
-        const virtualAbs = offset + 1 + initialBodyRows.length;
-        const idxCell = addSerialIndex ? `<td tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: #888;" data-row="${virtualAbs}" data-col="-1">${initialBodyRows.length + 1}</td>` : '';
-        const dataCells = Array.from({ length: numColumns }, (_, i) => `<td tabindex="0" style="min-width: ${Math.min(columnWidths[i] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: ${columnColors[i]}; overflow: hidden;" data-row="${virtualAbs}" data-col="${i}"></td>`).join('');
-        tableHtml += `<tr>${idxCell}${dataCells}</tr>`;
-      }
-      tableHtml += `</tbody>`;
-    } else {
-      tableHtml += `<tbody>`;
-      const nonHeaderRows = chunked ? allRows.slice(0, chunkRows) : allRows;
-      nonHeaderRows.forEach((row, r) => {
-        tableHtml += `<tr>${
-          addSerialIndex
-            ? `<td tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: #888;" data-row="${offset + r}" data-col="-1">${r + 1}</td>`
-            : ''
-        }`;
-        for (let i = 0; i < numColumns; i++) {
-          const rawValue = row[i] || '';
-          const safe = this.formatCellContent(rawValue, clickableLinks);
-          const titleAttr = this.getMultilineCellTitleAttr(rawValue);
-          tableHtml += `<td tabindex="0" style="min-width: ${Math.min(columnWidths[i] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: ${columnColors[i]}; overflow: hidden;"${titleAttr} data-row="${offset + r}" data-col="${i}"><div class="cell-body" style="white-space: pre-wrap; overflow-wrap: anywhere;">${safe}</div></td>`;
-        }
-        tableHtml += `</tr>`;
-      });
-      if (!chunked && includeTrailingEmptyRow) {
-        const virtualAbs = offset + nonHeaderRows.length;
-        const displayIdx = nonHeaderRows.length + 1;
-        const idxCell = addSerialIndex ? `<td tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: #888;" data-row="${virtualAbs}" data-col="-1">${displayIdx}</td>` : '';
-        const dataCells = Array.from({ length: numColumns }, (_, i) => `<td tabindex="0" style="min-width: ${Math.min(columnWidths[i] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: ${columnColors[i]}; overflow: hidden;" data-row="${virtualAbs}" data-col="${i}"></td>`).join('');
-        tableHtml += `<tr>${idxCell}${dataCells}</tr>`;
-      }
-      tableHtml += `</tbody>`;
-    }
-    tableHtml += `</table>`;
-    // If chunked, append a final chunk with the virtual row so it appears at the end.
-    if (chunked && includeTrailingEmptyRow) {
-      if (nextChunkStart === -1 && serializedChunkCount < safeMaxSerializedChunks) {
-        const startAbs = headerFlag ? offset + 1 : offset;
-        const virtualAbs = startAbs + allRowsCount;
-        const displayIdx = allRowsCount + 1;
-        const idxCell = addSerialIndex ? `<td tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: #888;" data-row="${virtualAbs}" data-col="-1">${displayIdx}</td>` : '';
-        const dataCells = Array.from({ length: numColumns }, (_, i) => `<td tabindex="0" style="min-width: ${Math.min(columnWidths[i] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${isDark ? '#555' : '#ccc'}; color: ${columnColors[i]}; overflow: hidden;" data-row="${virtualAbs}" data-col="${i}"></td>`).join('');
-        const vrow = `<tr>${idxCell}${dataCells}</tr>`;
-        chunks.push(vrow);
-      } else if (nextChunkStart === -1) {
-        nextChunkStart = allRowsCount;
-      }
-    }
-
-    const hasRemoteChunks = nextChunkStart >= 0;
-    const chunkState: ChunkRenderState | undefined = chunked
-      ? {
-          startAbs: headerFlag ? offset + 1 : offset,
-          allRows,
-          allRowsCount,
-          chunkRows,
-          includeTrailingEmptyRow,
-          addSerialIndex,
-          numColumns,
-          columnWidths,
-          columnColors,
-          clickableLinks,
-          isDark,
-          serialIndexWidthCh
-        }
-      : undefined;
-
-    return {
-      tableHtml,
-      chunksJson: JSON.stringify(chunks),
-      colorCss,
-      nextChunkStart,
-      hasRemoteChunks,
-      chunkState
-    };
+    });
   }
 
   private getEffectiveHeader(_data: string[][], _hiddenRows: number): boolean {
@@ -1755,6 +1538,9 @@ class CsvEditorController {
     // Build script URI using file path for compatibility (older APIs may lack Uri.joinPath)
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(this.context.extensionPath, 'media-媒体', 'main.js'))
+    );
+    const findReplaceScriptUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.context.extensionPath, 'media-媒体', 'webviewFindReplace.js'))
     );
     const filterPanelScriptUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(this.context.extensionPath, 'media-媒体', 'webviewFilterPanel.js'))
@@ -2103,6 +1889,7 @@ class CsvEditorController {
     </div>
     <div id="contextMenu"></div>
 
+    <script nonce="${nonce}" src="${findReplaceScriptUri}"></script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
     <script nonce="${nonce}" src="${filterPanelScriptUri}"></script>
   </body>
@@ -2159,31 +1946,15 @@ class CsvEditorController {
   }
 
   private escapeHtml(text: string): string {
-    return text.replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    })[m] as string);
+    return escapeHtml(text);
   }
 
   private isAllowedExternalScheme(scheme: string): boolean {
-    const normalized = scheme.toLowerCase();
-    return normalized === 'http' || normalized === 'https' || normalized === 'ftp' || normalized === 'mailto';
+    return isAllowedExternalScheme(scheme);
   }
 
   private isAllowedExternalUrl(rawUrl: unknown): rawUrl is string {
-    if (typeof rawUrl !== 'string') return false;
-    const value = rawUrl.trim();
-    if (!value) return false;
-    try {
-      const parsed = new URL(value);
-      const scheme = parsed.protocol.replace(/:$/, '').toLowerCase();
-      return this.isAllowedExternalScheme(scheme);
-    } catch {
-      return false;
-    }
+    return isAllowedExternalUrl(rawUrl);
   }
 
   private async openLinkExternally(rawUrl: unknown): Promise<void> {
@@ -2298,144 +2069,35 @@ class CsvEditorController {
   }
 
   private linkifyUrls(escapedText: string): string {
-    // Match URLs in already-escaped text (handles &amp; in query strings).
-    // Supports http, https, ftp, mailto, and www.*.* (Google Sheets-like behavior).
-    const urlPattern = /\b(?:(?:https?:\/\/|ftp:\/\/|mailto:)[^\s<>&"']+(?:&amp;[^\s<>&"']+)*|www\.[^\s<>&"']+\.[^\s<>&"']+)/gi;
-    return escapedText.replace(urlPattern, (rawMatch) => {
-      let matched = rawMatch;
-      let trailing = '';
-      const trailingMatch = matched.match(/[.,!?;:)\]]+$/);
-      if (trailingMatch) {
-        trailing = trailingMatch[0];
-        matched = matched.slice(0, -trailing.length);
-      }
-      if (!matched) {
-        return rawMatch;
-      }
-
-      // Decode &amp; back to & for URL parsing and opening.
-      let href = matched.replace(/&amp;/g, '&');
-      if (/^www\./i.test(href)) {
-        href = `https://${href}`;
-      }
-      if (!this.isAllowedExternalUrl(href)) {
-        return rawMatch;
-      }
-
-      return `<span class="csv-link" data-href="${this.escapeHtml(href)}" title="Ctrl/Cmd+click to open">${matched}</span>${trailing}`;
-    });
+    return linkifyUrls(escapedText);
   }
 
   private formatCellContent(text: string, linkify: boolean): string {
-    const escaped = this.escapeHtml(text);
-    return linkify ? this.linkifyUrls(escaped) : escaped;
+    return formatCellContent(text, linkify);
   }
 
   private getMultilineCellTitleAttr(text: string): string {
-    if (!text || (text.indexOf('\n') === -1 && text.indexOf('\r') === -1)) {
-      return '';
-    }
-    return ` title="${this.escapeHtml(text)}"`;
+    return getMultilineCellTitleAttr(text);
   }
 
   private escapeCss(text: string): string {
-    // conservative; ok for font-family lists
-    return text.replace(/[\\"]/g, m => (m === '\\' ? '\\\\' : '\\"'));
+    return escapeCss(text);
   }
 
   private isDate(value: string): boolean {
-    if (!value) return false;
-    const v = value.trim();
-    // Strictly match ISO-like date formats to avoid misclassifying plain numbers as dates.
-    const isoDate = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
-    const isoSlash = /^\d{4}\/\d{2}\/\d{2}$/;
-    if (!(isoDate.test(v) || isoSlash.test(v))) return false;
-    return !isNaN(Date.parse(v));
-  }
-
-  private isBooleanish(value: string): boolean {
-    const v = (value ?? '').trim().toLowerCase();
-    if (!v) return false;
-    if (v === 'true' || v === 'false') return true;
-    if (v === 't' || v === 'f') return true;
-    if (v === 'yes' || v === 'no') return true;
-    if (v === 'y' || v === 'n') return true;
-    if (v === 'on' || v === 'off') return true;
-    if (v === '1' || v === '0') return true;
-    return false;
+    return isDate(value);
   }
 
   private estimateColumnDataType(column: string[]): string {
-    let allBoolean = true, allDate = true, allInteger = true, allFloat = true, allEmpty = true;
-    for (const cell of column) {
-      const items = cell.split(',').map(item => item.trim());
-      for (const item of items){
-        if (item === '') continue;
-        allEmpty = false;
-        if (!this.isBooleanish(item)) allBoolean = false;
-        if (!this.isDate(item)) allDate = false;
-        const num = Number(item);
-        if (!Number.isInteger(num)) allInteger = false;
-        if (isNaN(num)) allFloat = false;
-      }
-    }
-    if (allEmpty) return "empty";
-    if (allBoolean) return "boolean";
-    if (allDate) return "date";
-    if (allInteger) return "integer";
-    if (allFloat) return "float";
-    return "string";
+    return estimateColumnDataType(column);
   }
 
   private getColumnColor(type: string, isDark: boolean, columnIndex: number, palette: 'default' | 'cool' | 'warm' = 'default'): string {
-    let hueRange = 0, isDefault = false;
-    if (palette === 'cool') {
-      switch (type){
-        case "boolean": hueRange = 160; break;
-        case "date": hueRange = 210; break;
-        case "float": hueRange = isDark ? 195 : 205; break;
-        case "integer": hueRange = 130; break;
-        case "string": hueRange = 190; break;
-        case "empty": isDefault = true; break;
-      }
-    } else if (palette === 'warm') {
-      switch (type){
-        case "boolean": hueRange = 55; break;
-        case "date": hueRange = 28; break;
-        case "float": hueRange = isDark ? 18 : 24; break;
-        case "integer": hueRange = 42; break;
-        case "string": hueRange = 8; break;
-        case "empty": isDefault = true; break;
-      }
-    } else {
-      switch (type){
-        case "boolean": hueRange = 30; break;
-        case "date": hueRange = 210; break;
-        case "float": hueRange = isDark ? 60 : 270; break;
-        case "integer": hueRange = 120; break;
-        case "string": hueRange = 0; break;
-        case "empty": isDefault = true; break;
-      }
-    }
-    if (isDefault) return isDark ? "#BBB" : "#444";
-    const saturationOffset = ((columnIndex * 7) % 31) - 15;
-    const saturation = saturationOffset + (isDark ? 60 : 80);
-    const lightnessOffset = ((columnIndex * 13) % 31) - 15;
-    const lightness = lightnessOffset + (isDark ? 70 : 30);
-    const hueOffset = ((columnIndex * 17) % 31) - 15;
-    const finalHue = (hueRange + hueOffset + 360) % 360;
-    return this.hslToHex(finalHue, saturation, lightness);
+    return getColumnColor(type, isDark, columnIndex, palette);
   }
 
   private hslToHex(h: number, s: number, l: number): string {
-    s /= 100; l /= 100;
-    const k = (n: number) => (n + h / 30) % 12;
-    const a = s * Math.min(l, 1 - l);
-    const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
-    const r = Math.round(255 * f(0));
-    const g = Math.round(255 * f(8));
-    const b = Math.round(255 * f(4));
-    return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+    return hslToHex(h, s, l);
   }
 
   private getNonce() {
@@ -2472,263 +2134,28 @@ export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly headerKey     = 'csv.headerByUri';
   public static readonly serialKey     = 'csv.serialIndexByUri';
   public static readonly sepKey        = 'csv.separatorByUri';
-  private static readonly DEFAULT_SEPARATOR = ',';
-  private static readonly DEFAULT_SEPARATOR_MODE: SeparatorMode = 'extension';
-  private static readonly BUILTIN_SEPARATORS_BY_EXTENSION: Record<string, string> = {
-    '.csv': ',',
-    '.tsv': '\t',
-    '.tab': '\t',
-    '.psv': '|'
-  };
-  private static readonly AUTO_SEPARATOR_CANDIDATES = [',', ';', '\t', '|'];
+  private static readonly DEFAULT_SEPARATOR = DEFAULT_CSV_SEPARATOR;
+  private static readonly DEFAULT_SEPARATOR_MODE: SeparatorMode = DEFAULT_CSV_SEPARATOR_MODE;
+  private static readonly BUILTIN_SEPARATORS_BY_EXTENSION: Record<string, string> = BUILTIN_SEPARATORS_BY_EXTENSION;
 
   private static normalizeExtension(rawExt: string): string {
-    const trimmed = (rawExt ?? '').trim().toLowerCase();
-    if (!trimmed) return '';
-    return trimmed.startsWith('.') ? trimmed : `.${trimmed}`;
+    return normalizeExtension(rawExt);
   }
 
   private static normalizeSeparator(rawSep: unknown): string | undefined {
-    if (typeof rawSep !== 'string') return undefined;
-    if (rawSep.length === 0) return undefined;
-    if (rawSep === '\\t') return '\t';
-    return rawSep;
+    return normalizeSeparator(rawSep);
   }
 
   public static getSeparatorSettings(uri: vscode.Uri): SeparatorSettings {
-    const fallback: SeparatorSettings = {
-      mode: CsvEditorProvider.DEFAULT_SEPARATOR_MODE,
-      defaultSeparator: CsvEditorProvider.DEFAULT_SEPARATOR,
-      byExtension: { ...CsvEditorProvider.BUILTIN_SEPARATORS_BY_EXTENSION }
-    };
-
-    const workspaceAny = (vscode as any).workspace;
-    if (!workspaceAny || typeof workspaceAny.getConfiguration !== 'function') {
-      return fallback;
-    }
-
-    const cfg = workspaceAny.getConfiguration('csv', uri) as vscode.WorkspaceConfiguration;
-    const rawMode = cfg.get<string>('separatorMode', CsvEditorProvider.DEFAULT_SEPARATOR_MODE);
-    const mode: SeparatorMode =
-      rawMode === 'auto' || rawMode === 'default' || rawMode === 'extension'
-        ? rawMode
-        : CsvEditorProvider.DEFAULT_SEPARATOR_MODE;
-
-    const defaultSeparator =
-      CsvEditorProvider.normalizeSeparator(cfg.get<string>('defaultSeparator', CsvEditorProvider.DEFAULT_SEPARATOR)) ??
-      CsvEditorProvider.DEFAULT_SEPARATOR;
-
-    const byExtension: Record<string, string> = {
-      ...CsvEditorProvider.BUILTIN_SEPARATORS_BY_EXTENSION
-    };
-    const rawMap = cfg.get<Record<string, unknown>>('separatorByExtension', {});
-    if (rawMap && typeof rawMap === 'object') {
-      for (const [rawExt, rawSep] of Object.entries(rawMap)) {
-        const ext = CsvEditorProvider.normalizeExtension(rawExt);
-        const sep = CsvEditorProvider.normalizeSeparator(rawSep);
-        if (!ext || !sep) continue;
-        byExtension[ext] = sep;
-      }
-    }
-
-    return { mode, defaultSeparator, byExtension };
+    return getSeparatorSettings(uri);
   }
 
   public static serializeSeparatorSettings(settings: SeparatorSettings): string {
-    const sortedMapEntries = Object.entries(settings.byExtension)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([ext, sep]) => `${ext}:${sep}`)
-      .join('|');
-    return `${settings.mode}::${settings.defaultSeparator}::${sortedMapEntries}`;
-  }
-
-  private static resolveSeparatorFromExtension(filePath: string, settings: SeparatorSettings): string {
-    const ext = CsvEditorProvider.normalizeExtension(path.extname((filePath ?? '').toLowerCase()));
-    if (!ext) return settings.defaultSeparator;
-    return settings.byExtension[ext] ?? settings.defaultSeparator;
-  }
-
-  private static countDelimiterOutsideQuotes(line: string, delimiter: string): number {
-    if (!delimiter) return 0;
-    let inQuotes = false;
-    let count = 0;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          i++;
-          continue;
-        }
-        inQuotes = !inQuotes;
-        continue;
-      }
-      if (!inQuotes && line.startsWith(delimiter, i)) {
-        count++;
-        i += delimiter.length - 1;
-      }
-    }
-    return count;
-  }
-
-  private static detectSeparatorFromText(text: string, candidates: string[]): string | undefined {
-    if (!text) return undefined;
-    const sampleText = text.length > 300000 ? text.slice(0, 300000) : text;
-    const allLines = sampleText.split(/\r\n|\n|\r/);
-    const lines: string[] = [];
-    for (const line of allLines) {
-      if (line.trim().length === 0) continue;
-      lines.push(line);
-      if (lines.length >= 200) break;
-    }
-    if (lines.length === 0) return undefined;
-
-    const minRowsWithDelimiter = lines.length === 1 ? 1 : 2;
-    let best:
-      | {
-          separator: string;
-          rowsWithDelimiter: number;
-          consistency: number;
-          avgDelimiterCount: number;
-          score: number;
-        }
-      | undefined;
-
-    for (const separator of candidates) {
-      if (!separator) continue;
-      const counts = lines.map(line => CsvEditorProvider.countDelimiterOutsideQuotes(line, separator));
-      const withDelimiter = counts.filter(count => count > 0);
-      if (withDelimiter.length < minRowsWithDelimiter) continue;
-
-      const frequencies = new Map<number, number>();
-      for (const count of withDelimiter) {
-        frequencies.set(count, (frequencies.get(count) ?? 0) + 1);
-      }
-      let modeRowCount = 0;
-      for (const freq of frequencies.values()) {
-        if (freq > modeRowCount) modeRowCount = freq;
-      }
-
-      const consistency = withDelimiter.length > 0 ? modeRowCount / withDelimiter.length : 0;
-      const avgDelimiterCount = withDelimiter.reduce((sum, count) => sum + count, 0) / withDelimiter.length;
-      const firstLineBonus = (counts[0] ?? 0) > 0 ? 25 : -25;
-      const score = withDelimiter.length * 10 + consistency * 100 + avgDelimiterCount + firstLineBonus;
-      const candidate = { separator, rowsWithDelimiter: withDelimiter.length, consistency, avgDelimiterCount, score };
-
-      if (!best) {
-        best = candidate;
-        continue;
-      }
-      if (candidate.score > best.score) {
-        best = candidate;
-        continue;
-      }
-      if (candidate.score === best.score && candidate.rowsWithDelimiter > best.rowsWithDelimiter) {
-        best = candidate;
-      }
-    }
-
-    return best?.separator;
+    return serializeSeparatorSettings(settings);
   }
 
   public static resolveInheritedSeparator(filePath: string, text: string, settings: SeparatorSettings): string {
-    const extensionSeparator = CsvEditorProvider.resolveSeparatorFromExtension(filePath, settings);
-    if (settings.mode === 'default') {
-      return settings.defaultSeparator;
-    }
-    if (settings.mode === 'auto') {
-      const candidates: string[] = [];
-      const seen = new Set<string>();
-      const push = (value: string | undefined) => {
-        if (!value || seen.has(value)) return;
-        seen.add(value);
-        candidates.push(value);
-      };
-      push(extensionSeparator);
-      push(settings.defaultSeparator);
-      CsvEditorProvider.AUTO_SEPARATOR_CANDIDATES.forEach(push);
-      Object.values(settings.byExtension).forEach(push);
-      return CsvEditorProvider.detectSeparatorFromText(text, candidates) ?? extensionSeparator;
-    }
-    return extensionSeparator;
-  }
-
-  private static parseCsvFieldSpans(text: string, delimiter: string): CsvFieldSpan[][] {
-    const sep = delimiter && delimiter.length ? delimiter : CsvEditorProvider.DEFAULT_SEPARATOR;
-    const rows: CsvFieldSpan[][] = [];
-    let row: CsvFieldSpan[] = [];
-    let fieldStart = 0;
-    let i = 0;
-    let inQuotes = false;
-    let quoted = false;
-
-    const pushField = (end: number) => {
-      row.push({ start: fieldStart, end, quoted });
-      quoted = false;
-    };
-    const pushRow = () => {
-      rows.push(row);
-      row = [];
-    };
-
-    while (i < text.length) {
-      if (!inQuotes) {
-        if (text.startsWith(sep, i)) {
-          pushField(i);
-          i += sep.length;
-          fieldStart = i;
-          continue;
-        }
-        const ch = text[i];
-        if (ch === '"' && i === fieldStart) {
-          inQuotes = true;
-          quoted = true;
-          i++;
-          continue;
-        }
-        if (ch === '\r' || ch === '\n') {
-          pushField(i);
-          pushRow();
-          if (ch === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
-            i += 2;
-          } else {
-            i++;
-          }
-          fieldStart = i;
-          continue;
-        }
-        i++;
-        continue;
-      }
-
-      if (text[i] === '"') {
-        if (i + 1 < text.length && text[i + 1] === '"') {
-          i += 2;
-          continue;
-        }
-        inQuotes = false;
-        i++;
-        continue;
-      }
-      i++;
-    }
-
-    pushField(text.length);
-    pushRow();
-    return rows;
-  }
-
-  private static encodeCsvField(value: string, delimiter: string, preferQuoted: boolean): string {
-    const mustQuote =
-      preferQuoted ||
-      value.includes('"') ||
-      value.includes('\n') ||
-      value.includes('\r') ||
-      (!!delimiter && value.includes(delimiter));
-    if (!mustQuote) {
-      return value;
-    }
-    const escaped = value.replace(/"/g, '""');
-    return `"${escaped}"`;
+    return resolveInheritedSeparator(filePath, text, settings);
   }
 
   public static applyFieldUpdatesPreservingFormat(
@@ -2736,45 +2163,7 @@ export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
     delimiter: string,
     updates: Array<{ row: number; col: number; value: string }>
   ): string | undefined {
-    if (!Array.isArray(updates) || updates.length === 0) {
-      return text;
-    }
-
-    const deduped = new Map<string, { row: number; col: number; value: string }>();
-    for (const update of updates) {
-      if (!Number.isInteger(update.row) || update.row < 0 || !Number.isInteger(update.col) || update.col < 0) {
-        continue;
-      }
-      deduped.set(`${update.row}:${update.col}`, update);
-    }
-    if (deduped.size === 0) {
-      return text;
-    }
-
-    const spans = CsvEditorProvider.parseCsvFieldSpans(text, delimiter);
-    const edits: Array<{ start: number; end: number; replacement: string }> = [];
-
-    for (const update of deduped.values()) {
-      const span = spans[update.row]?.[update.col];
-      if (!span) {
-        return undefined;
-      }
-      const replacement = CsvEditorProvider.encodeCsvField(update.value, delimiter, span.quoted);
-      if (text.slice(span.start, span.end) !== replacement) {
-        edits.push({ start: span.start, end: span.end, replacement });
-      }
-    }
-
-    if (edits.length === 0) {
-      return text;
-    }
-
-    edits.sort((a, b) => b.start - a.start);
-    let output = text;
-    for (const edit of edits) {
-      output = output.slice(0, edit.start) + edit.replacement + output.slice(edit.end);
-    }
-    return output;
+    return applyFieldUpdatesPreservingFormat(text, delimiter, updates);
   }
 
   constructor(private readonly context: vscode.ExtensionContext) {}

@@ -7,6 +7,7 @@ describe('Webview custom find integration', () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), 'src-源码', 'extension.ts'), 'utf8');
   const providerSource = fs.readFileSync(path.join(process.cwd(), 'src-源码', 'CsvEditorProvider.ts'), 'utf8');
   const webviewScript = fs.readFileSync(path.join(process.cwd(), 'media-媒体', 'main.js'), 'utf8');
+  const findReplaceScript = fs.readFileSync(path.join(process.cwd(), 'media-媒体', 'webviewFindReplace.js'), 'utf8');
 
   it('does not enable native webview find widget', () => {
     assert.ok(!extensionSource.includes('enableFindWidget: true'));
@@ -24,7 +25,8 @@ describe('Webview custom find integration', () => {
   it('handles Ctrl/Cmd+F and Ctrl/Cmd+H in the webview script', () => {
     assert.ok(webviewScript.includes("key === 'f'"));
     assert.ok(webviewScript.includes("key === 'h'"));
-    assert.ok(webviewScript.includes('openFindReplace(false);'));
-    assert.ok(webviewScript.includes('openFindReplace(true);'));
+    assert.ok(webviewScript.includes('csvFindReplace.open(false)'));
+    assert.ok(webviewScript.includes('csvFindReplace.open(true)'));
+    assert.ok(findReplaceScript.includes('openFindReplace'));
   });
 });

@@ -167,6 +167,7 @@ function buildDom(cfg: HarnessConfig): string {
  */
 export function writeHarnessHtml(cfg: HarnessConfig): { url: string; dir: string } {
   const mainJs = fs.readFileSync(path.join(REPO_ROOT, 'media-媒体', 'main.js'), 'utf8');
+  const findReplaceJs = fs.readFileSync(path.join(REPO_ROOT, 'media-媒体', 'webviewFindReplace.js'), 'utf8');
   const filterPanelJs = fs.readFileSync(path.join(REPO_ROOT, 'media-媒体', 'webviewFilterPanel.js'), 'utf8');
 
   const shim = `
@@ -193,6 +194,9 @@ export function writeHarnessHtml(cfg: HarnessConfig): { url: string; dir: string
 ${shim}
 </head><body>
 ${buildDom(cfg)}
+<script>
+${findReplaceJs}
+</script>
 <script>
 ${mainJs}
 </script>

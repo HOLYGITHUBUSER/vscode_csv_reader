@@ -6,6 +6,7 @@ import path from 'path';
 describe('Webview find/replace widget', () => {
   const providerSource = fs.readFileSync(path.join(process.cwd(), 'src-源码', 'CsvEditorProvider.ts'), 'utf8');
   const webviewSource = fs.readFileSync(path.join(process.cwd(), 'media-媒体', 'main.js'), 'utf8');
+  const findReplaceSource = fs.readFileSync(path.join(process.cwd(), 'media-媒体', 'webviewFindReplace.js'), 'utf8');
 
   it('renders two-row find/replace overlay controls', () => {
     assert.ok(providerSource.includes('id="findReplaceWidget"'));
@@ -27,25 +28,25 @@ describe('Webview find/replace widget', () => {
     assert.ok(webviewSource.includes("key === 'f'"));
     assert.ok(webviewSource.includes("key === 'h'"));
     assert.ok(webviewSource.includes("e.key === 'F3'"));
-    assert.ok(webviewSource.includes('openFindReplace(false);'));
-    assert.ok(webviewSource.includes('openFindReplace(true);'));
-    assert.ok(webviewSource.includes('if (findReplaceState.open && e.key === \'Escape\') {'));
-    assert.ok(webviewSource.includes('if (e.key === \'Enter\') {'));
+    assert.ok(webviewSource.includes('csvFindReplace.open(false)'));
+    assert.ok(webviewSource.includes('csvFindReplace.open(true)'));
+    assert.ok(webviewSource.includes('csvFindReplace.close()'));
+    assert.ok(findReplaceSource.includes("if (e.key === 'Enter') {"));
   });
 
   it('tracks disabled states for navigation and replace actions', () => {
-    assert.ok(webviewSource.includes('findPrev.disabled = !hasMatches;'));
-    assert.ok(webviewSource.includes('findNext.disabled = !hasMatches;'));
-    assert.ok(webviewSource.includes('replaceOne.disabled = !hasQuery || !hasMatches;'));
-    assert.ok(webviewSource.includes('replaceAll.disabled = !hasQuery || !hasMatches;'));
+    assert.ok(findReplaceSource.includes('findPrev.disabled = !hasMatches;'));
+    assert.ok(findReplaceSource.includes('findNext.disabled = !hasMatches;'));
+    assert.ok(findReplaceSource.includes('replaceOne.disabled = !hasQuery || !hasMatches;'));
+    assert.ok(findReplaceSource.includes('replaceAll.disabled = !hasQuery || !hasMatches;'));
   });
 
   it('sends replace-all changes in a single batch message', () => {
-    assert.ok(webviewSource.includes("type: 'replaceCells'"));
+    assert.ok(findReplaceSource.includes("type: 'replaceCells'"));
   });
 
   it('requests global match coordinates from the extension and handles async results', () => {
-    assert.ok(webviewSource.includes("type: 'findMatches'"));
+    assert.ok(findReplaceSource.includes("type: 'findMatches'"));
     assert.ok(webviewSource.includes("message.type === 'findMatchesResult'"));
   });
 });
