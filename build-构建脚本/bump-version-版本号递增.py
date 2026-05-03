@@ -51,7 +51,10 @@ def main() -> None:
     )
     print(f"version {old} -> {new}")
 
-    cmd = ["npm", "run", "package"] if args.package else ["npm", "run", "compile"]
+    if args.package:
+        cmd = ["node", str(ROOT / "build-构建脚本" / "package-vsix-with-timestamp-打包带时间戳.cjs")]
+    else:
+        cmd = ["npm", "run", "compile"]
     r = subprocess.run(cmd, cwd=ROOT)
     sys.exit(r.returncode)
 
