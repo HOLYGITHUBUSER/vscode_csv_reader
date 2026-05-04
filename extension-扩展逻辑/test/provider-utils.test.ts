@@ -126,6 +126,13 @@ describe('CsvEditorProvider utility methods', () => {
     assert.strictEqual(html, 'www.google.com');
   });
 
+  it('serializes JSON for application/json script tags without HTML entities', () => {
+    const json = CsvEditorProvider.__test.jsonForScriptTag(['id', 'name_en', '</script>']);
+    assert.ok(!json.includes('&quot;'));
+    assert.ok(!json.includes('</script>'));
+    assert.deepStrictEqual(JSON.parse(json), ['id', 'name_en', '</script>']);
+  });
+
   it('external link allowlist accepts only supported URL schemes', () => {
     const allowed = CsvEditorProvider.__test.isAllowedExternalUrl;
     assert.strictEqual(allowed('https://example.com'), true);

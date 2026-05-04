@@ -12,6 +12,7 @@ import {
   isAllowedExternalScheme,
   isAllowedExternalUrl,
   isDate,
+  jsonForScriptTag,
   linkifyUrls
 } from './csvCellFormat';
 import {
@@ -1548,12 +1549,8 @@ class CsvEditorController {
 
     // Safe separator transport (assumes single character; see assumptions)
     const sepCode = (separator && separator.length > 0) ? separator.codePointAt(0)! : ','.codePointAt(0)!;
-    const columnOptionsHtml = columnLabels.map((label, index) => {
-      const shown = label.trim() || `列 ${index + 1}`;
-      return `<option value="${index}">${this.escapeHtml(`${index + 1}. ${shown}`)}</option>`;
-    }).join('');
-    const columnLabelsJson = JSON.stringify(columnLabels);
-    const columnFiltersJson = JSON.stringify(columnFilters || {});
+    const columnLabelsJson = jsonForScriptTag(columnLabels);
+    const columnFiltersJson = jsonForScriptTag(columnFilters || {});
 
     return `<!DOCTYPE html>
 <html>
@@ -1811,6 +1808,13 @@ class CsvEditorController {
       #csvFloatPanel:focus-within { opacity: 1; }
       #csvColumnFilterPopover[hidden] { display: none !important; }
       #csvFloatPanel > * { flex:0 0 auto; }
+      .csv-column-combobox { position:relative;display:inline-flex;align-items:center; }
+      #csvColumnFilterColumn { box-sizing:border-box;height:24px;width:170px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;padding:0 6px;outline:none; }
+      #csvColumnFilterOptions { position:fixed;z-index:1250;width:min(320px,calc(100vw - 32px));max-height:220px;overflow:auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.98)':'rgba(255,255,255,0.98)'};box-shadow:0 4px 12px rgba(0,0,0,0.28);padding:4px; }
+      #csvColumnFilterOptions[hidden] { display:none !important; }
+      .csv-column-option { display:block;width:100%;border:0;border-radius:4px;background:transparent;color:${isDark?'#ddd':'#222'};text-align:left;cursor:pointer;font:inherit;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+      .csv-column-option:hover,
+      .csv-column-option.active { background:${isDark?'#3a3d41':'#e8f1ff'}; }
       #csvColumnFilterChips { min-width:0; }
       .csv-filter-chip { display:inline-flex;align-items:center;gap:4px;max-width:220px;flex:0 0 auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:999px;background:${isDark?'#252525':'#eef3ff'};color:${isDark?'#ddd':'#222'};padding:2px 6px;font-size:0.85em; }
       .csv-filter-chip span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
@@ -1825,9 +1829,10 @@ class CsvEditorController {
     <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.92)':'rgba(255,255,255,0.96)'};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0.88;transition:opacity 0.15s ease;font-size:inherit;">
       <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">过滤:</span>
       <span style="color:${isDark?'#888':'#999'};font-size:0.85em;" id="csvFilterStatus"></span>
-      <select id="csvColumnFilterColumn" style="height:24px;min-width:120px;max-width:220px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;">
-        ${columnOptionsHtml}
-      </select>
+      <div class="csv-column-combobox">
+        <input id="csvColumnFilterColumn" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0" title="输入列名或列号搜索" placeholder="搜索列名/列号">
+        <div id="csvColumnFilterOptions" role="listbox" hidden></div>
+      </div>
       <select id="csvColumnFilterMode" title="匹配方式" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;">
         <option value="contains">包含</option>
         <option value="equals">等于</option>
@@ -1844,8 +1849,8 @@ class CsvEditorController {
     </div>
 
     <script id="__csvChunks" type="application/json" nonce="${nonce}">${chunksJson}</script>
-    <script id="__csvColumnLabels" type="application/json" nonce="${nonce}">${this.escapeHtml(columnLabelsJson)}</script>
-    <script id="__csvColumnFilters" type="application/json" nonce="${nonce}">${this.escapeHtml(columnFiltersJson)}</script>
+    <script id="__csvColumnLabels" type="application/json" nonce="${nonce}">${columnLabelsJson}</script>
+    <script id="__csvColumnFilters" type="application/json" nonce="${nonce}">${columnFiltersJson}</script>
 
     <div id="findReplaceWidget" class="replace-collapsed" role="group" aria-label="Find and Replace">
       <div id="replaceToggleGutter" class="fr-gutter">
@@ -2402,6 +2407,9 @@ export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
     formatCellContent(text: string, linkify: boolean): string {
       const c: any = new (CsvEditorController as any)({} as any);
       return c.formatCellContent(text, linkify);
+    },
+    jsonForScriptTag(value: unknown): string {
+      return jsonForScriptTag(value);
     },
     isAllowedExternalUrl(url: unknown): boolean {
       const c: any = new (CsvEditorController as any)({} as any);

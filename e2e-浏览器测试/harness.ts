@@ -115,9 +115,10 @@ function buildDom(cfg: HarnessConfig): string {
 <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;">
   <span style="font-weight:600;">过滤:</span>
   <span id="csvFilterStatus" style="color:#999;font-size:0.85em;"></span>
-  <select id="csvColumnFilterColumn">
-    ${cfg.header.cells.map((label, i) => `<option value="${i}">${i + 1}. ${label}</option>`).join('')}
-  </select>
+  <div class="csv-column-combobox">
+    <input id="csvColumnFilterColumn" type="text" role="combobox" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0">
+    <div id="csvColumnFilterOptions" role="listbox" hidden></div>
+  </div>
   <select id="csvColumnFilterMode">
     <option value="contains">包含</option>
     <option value="equals">等于</option>

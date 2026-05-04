@@ -27,6 +27,12 @@ const cfg = {
 };
 
 let harnessDir: string;
+const chooseColumn = async (page: any, query: string) => {
+  const input = page.locator('#csvColumnFilterColumn');
+  await input.click();
+  await input.fill(query);
+  await input.press('Enter');
+};
 test.afterAll(() => {
   if (harnessDir) try { fs.rmSync(harnessDir, { recursive: true, force: true }); } catch {}
 });
@@ -52,7 +58,7 @@ test('floating panel: column filter builder is visible and fires filterSort', as
   await expect(page.locator('#csvColumnFilterColumn')).toBeVisible();
   await expect(page.locator('#csvColumnFilterValue')).toBeVisible();
 
-  await page.locator('#csvColumnFilterColumn').selectOption('0');
+  await chooseColumn(page, 'Name');
   await page.locator('#csvColumnFilterValue').fill('Alice');
   await page.locator('#csvColumnFilterAdd').click();
 
@@ -68,6 +74,31 @@ test('floating panel: column filter builder is visible and fires filterSort', as
   expect(last.columnFilters).toEqual({
     '0': { value: 'Alice', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
   });
+});
+
+test('floating panel: searchable column picker shows matching candidates', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+
+  const input = page.locator('#csvColumnFilterColumn');
+  await input.click();
+  await input.fill('zz');
+  await expect(page.locator('#csvColumnFilterOptions .csv-column-option')).toHaveText('无匹配列');
+
+  await input.fill('na');
+  const nameOption = page.locator('#csvColumnFilterOptions .csv-column-option').filter({ hasText: '1. Name' });
+  await expect(nameOption).toBeVisible();
+
+  await input.fill('ci');
+
+  const option = page.locator('#csvColumnFilterOptions .csv-column-option').filter({ hasText: '3. City' });
+  await expect(option).toBeVisible();
+  await option.click();
+  await expect(input).toHaveAttribute('data-selected-col', '2');
+  await expect(input).toHaveValue('3. City');
 });
 
 test('floating panel: row-height toggle cycles compact → wrap', async ({ page }) => {
@@ -108,10 +139,10 @@ test('floating panel: column filters post combined AND conditions', async ({ pag
   await page.goto(url);
   await expect(page.locator('#csv-root')).toBeVisible();
 
-  await page.locator('#csvColumnFilterColumn').selectOption('1');
+  await chooseColumn(page, 'Age');
   await page.locator('#csvColumnFilterValue').fill('30');
   await page.locator('#csvColumnFilterAdd').click();
-  await page.locator('#csvColumnFilterColumn').selectOption('2');
+  await chooseColumn(page, 'City');
   await page.locator('#csvColumnFilterValue').fill('NYC');
   await page.locator('#csvColumnFilterAdd').click();
 
@@ -133,7 +164,7 @@ test('floating panel: column filter options post match flags', async ({ page }) 
   await page.goto(url);
   await expect(page.locator('#csv-root')).toBeVisible();
 
-  await page.locator('#csvColumnFilterColumn').selectOption('2');
+  await chooseColumn(page, 'City');
   await page.locator('#csvColumnFilterMode').selectOption('equals');
   await page.locator('#csvColumnFilterIgnoreCase').uncheck();
   await page.locator('#csvColumnFilterIgnoreWhitespace').check();
@@ -200,7 +231,7 @@ test('floating panel: clear button resets column filters', async ({ page }) => {
   // Initially hidden.
   await expect(clear).toBeHidden();
 
-  await page.locator('#csvColumnFilterColumn').selectOption('0');
+  await chooseColumn(page, 'Name');
   await input.fill('Bob');
   await page.locator('#csvColumnFilterAdd').click();
   await expect(clear).toBeVisible();

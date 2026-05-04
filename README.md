@@ -2,7 +2,7 @@
 
 ![CSV Custom Pro 图标](icon-扩展图标/icon.png)
 
-专为 VS Code / Cursor / Windsurf 打造的高级 CSV 编辑器，提供类电子表格的交互体验：表格化编辑、智能列宽、类型着色、分块渲染、三态排序、全局过滤、查找替换。
+专为 VS Code / Cursor / Windsurf 打造的高级 CSV 编辑器，提供类电子表格的交互体验：表格化编辑、智能列宽、类型着色、分块渲染、三态排序、多列组合过滤、查找替换。
 
 ## 最新成品
 
@@ -38,12 +38,9 @@ npm run package:bump     # PATCH+1 → tsc → 打 VSIX（带时间戳）
 
 完整中文文档在 [`docs-项目文档/`](docs-项目文档/README.md)：
 
-- [目录结构](docs-项目文档/目录结构-directory-layout.md) —— 仓库里每个目录的职责
-- [开发指南](docs-项目文档/开发指南-development.md) —— npm 脚本、F5 调试、提交约定
-- [功能手册](docs-项目文档/功能手册-features.md) —— 快捷键 / 命令 / 配置项 / 浮动面板 / 三态排序
-- [测试指南](docs-项目文档/测试指南-testing.md) —— Node / jsdom / Playwright 三层策略
-- [打包与发布](docs-项目文档/打包与发布-packaging-release.md) —— VSIX 打包与装到 Cursor / Windsurf
-- [变更日志](docs-项目文档/变更日志-changelog.md) —— 1.3.x 的版本演进
+- [产品设计](docs-项目文档/产品设计-product.md) —— 产品定位、功能规格、交互说明和产品决策记录
+- [技术架构](docs-项目文档/技术架构-architecture.md) —— 目录结构、模块职责、消息流和大文件策略
+- [开发测试发布](docs-项目文档/开发测试发布-engineering.md) —— 本地开发、测试分层、完整验收、打包安装
 
 ## 目录结构
 
@@ -63,7 +60,7 @@ vscode_csv_reader/
 └─ backup-归档旧文件/            归档旧文件，不进 VSIX
 ```
 
-详细说明见 [`docs-项目文档/目录结构-directory-layout.md`](docs-项目文档/目录结构-directory-layout.md)。
+详细说明见 [`docs-项目文档/技术架构-architecture.md`](docs-项目文档/技术架构-architecture.md)。
 
 ## 许可证
 

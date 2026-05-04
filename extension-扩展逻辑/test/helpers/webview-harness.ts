@@ -132,9 +132,10 @@ function buildHtml(cfg: HarnessConfig): string {
 <!-- Floating filter / rowHeight panel（main.js 启动时会 querySelector 它们） -->
 <div id="csvFloatPanel">
   <span id="csvFilterStatus"></span>
-  <select id="csvColumnFilterColumn">
-    ${cfg.header.cells.map((label, i) => `<option value="${i}">${i + 1}. ${label}</option>`).join('')}
-  </select>
+  <div class="csv-column-combobox">
+    <input id="csvColumnFilterColumn" type="text" role="combobox" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0">
+    <div id="csvColumnFilterOptions" role="listbox" hidden></div>
+  </div>
   <select id="csvColumnFilterMode">
     <option value="contains">包含</option>
     <option value="equals">等于</option>

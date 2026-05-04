@@ -12,6 +12,13 @@ export function escapeCss(text: string): string {
   return text.replace(/[\\"]/g, m => (m === '\\' ? '\\\\' : '\\"'));
 }
 
+export function jsonForScriptTag(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 export function isAllowedExternalScheme(scheme: string): boolean {
   const normalized = scheme.toLowerCase();
   return normalized === 'http' || normalized === 'https' || normalized === 'ftp' || normalized === 'mailto';

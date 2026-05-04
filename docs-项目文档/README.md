@@ -1,26 +1,15 @@
-# 文档索引 · docs-项目文档/
+# 文档索引
 
-本目录按主题拆分了项目的中文文档，根目录 [`README.md`](../README.md) 只做一张"名片页"，详细内容都在这里。
+本目录只保留 3 份长期维护文档，避免功能说明、架构说明和工程流程散落在多个文件里。
 
-## 开始
+## 核心文档
 
-- **[目录结构](目录结构-directory-layout.md)** —— 仓库里每个文件夹/关键文件的职责、命名约定、为什么要这么放。
-- **[开发指南](开发指南-development.md)** —— `npm` 脚本一张表、`F5` 扩展调试、图标与版本号流程、提交/推送约定。
-- **[功能手册](功能手册-features.md)** —— 快捷键、命令、`csv.*` 配置项、右下角浮动面板、三态排序等 UI 交互说明。
+- **[产品设计](产品设计-product.md)**：产品定位、用户可见功能、核心交互和产品决策记录。每次改用户可见行为都要更新这里。
+- **[技术架构](技术架构-architecture.md)**：目录结构、模块职责、webview 与扩展通信、大文件策略和 VSIX 内容边界。
+- **[开发测试发布](开发测试发布-engineering.md)**：本地开发、测试分层、完整验收、打包、安装和提交前检查。
 
-## 工程
+## 外部入口
 
-- **[测试指南](测试指南-testing.md)** —— 三层测试金字塔（Node 单测 / jsdom webview / Playwright 真浏览器 E2E），以及"回归验证"的标准姿势。
-- **[打包与发布](打包与发布-packaging-release.md)** —— `npm run package:bump` 的版本号递增 + 时间戳 VSIX + `latest.vsix` 副本 + `BUILD-INFO.md`；一键装进 Cursor / Windsurf。
-
-## 记录
-
-- **[变更日志](变更日志-changelog.md)** —— 从 1.3.0 → 1.3.5 的功能/修复/测试演进，按版本聚合。
-
----
-
-## 相关外部文档
-
-- 根目录 [`README.md`](../README.md) · 项目名片
-- [`samples-试用样例/README.md`](../samples-试用样例/README.md) · 人眼试用 CSV 样例的使用说明
-- [`artifacts-安装包/BUILD-INFO.md`](../artifacts-安装包/BUILD-INFO.md) · 最近一次 VSIX 的构建元信息（打包脚本自动生成）
+- 根目录 [`README.md`](../README.md)：项目名片和快速开始。
+- [`samples-试用样例/README.md`](../samples-试用样例/README.md)：手工试用 CSV 样例说明。
+- [`artifacts-安装包/BUILD-INFO.md`](../artifacts-安装包/BUILD-INFO.md)：最近一次 VSIX 构建元信息，打包脚本自动生成。

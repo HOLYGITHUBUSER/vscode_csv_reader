@@ -25,13 +25,14 @@ describe('Webview column filter panel', () => {
   afterEach(() => h.destroy());
 
   const addColumnFilter = (col: string, value: string, options: { mode?: string; ignoreCase?: boolean; ignoreWhitespace?: boolean } = {}) => {
-    const select = h.document.getElementById('csvColumnFilterColumn') as HTMLSelectElement;
+    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
     const mode = h.document.getElementById('csvColumnFilterMode') as HTMLSelectElement;
     const input = h.document.getElementById('csvColumnFilterValue') as HTMLInputElement;
     const ignoreCase = h.document.getElementById('csvColumnFilterIgnoreCase') as HTMLInputElement;
     const ignoreWhitespace = h.document.getElementById('csvColumnFilterIgnoreWhitespace') as HTMLInputElement;
     const add = h.document.getElementById('csvColumnFilterAdd') as HTMLButtonElement;
-    select.value = col;
+    column.setAttribute('data-selected-col', col);
+    column.value = `${Number(col) + 1}. ${['Name', 'City', 'Status'][Number(col)]}`;
     mode.value = options.mode ?? 'contains';
     ignoreCase.checked = options.ignoreCase ?? true;
     ignoreWhitespace.checked = options.ignoreWhitespace ?? false;
@@ -65,6 +66,37 @@ describe('Webview column filter panel', () => {
     assert.deepStrictEqual(plain(lastMsg.columnFilters), {
       '1': { value: 'Shang Hai', mode: 'equals', ignoreCase: false, ignoreWhitespace: true },
     });
+  });
+
+  it('searches column candidates by name and selects with Enter', () => {
+    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
+    column.focus();
+    column.value = 'sta';
+    column.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+
+    const options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
+    assert.strictEqual(options.length, 1);
+    assert.strictEqual(options[0].textContent, '3. Status');
+
+    column.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.strictEqual(column.getAttribute('data-selected-col'), '2');
+    assert.strictEqual(column.value, '3. Status');
+  });
+
+  it('refreshes candidates when query changes from no match to a matching name', () => {
+    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
+    column.focus();
+    column.value = 'zz';
+    column.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+    let options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
+    assert.strictEqual(options.length, 1);
+    assert.strictEqual(options[0].textContent, '无匹配列');
+
+    column.value = 'na';
+    column.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+    options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
+    assert.strictEqual(options.length, 1);
+    assert.strictEqual(options[0].textContent, '1. Name');
   });
 
   it('renders chips and allows removing a single column filter', () => {

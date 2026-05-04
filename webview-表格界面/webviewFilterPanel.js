@@ -13,7 +13,8 @@
   const filterStatus = document.getElementById('csvFilterStatus');
   const columnToggle = document.getElementById('csvColumnFilterToggle');
   const columnPopover = document.getElementById('csvColumnFilterPopover');
-  const columnSelect = document.getElementById('csvColumnFilterColumn');
+  const columnInput = document.getElementById('csvColumnFilterColumn');
+  const columnOptions = document.getElementById('csvColumnFilterOptions');
   const columnModeSelect = document.getElementById('csvColumnFilterMode');
   const columnValueInput = document.getElementById('csvColumnFilterValue');
   const columnIgnoreCase = document.getElementById('csvColumnFilterIgnoreCase');
@@ -32,6 +33,11 @@
   const initialLabels = readJsonScript('__csvColumnLabels', []);
   let columnLabels = Array.isArray(initialLabels) ? initialLabels : [];
   let columnFilters = normalizeColumnFilters(readJsonScript('__csvColumnFilters', {}));
+  let selectedColumnIndex = 0;
+  let activeColumnOptionIndex = 0;
+  if (columnOptions && columnOptions.parentElement !== document.body) {
+    document.body.appendChild(columnOptions);
+  }
 
   const applyRowHeightClass = mode => {
     const tbl = document.querySelector('#csv-root table');
@@ -111,6 +117,108 @@
     const label = columnLabels[idx] || `列 ${idx + 1}`;
     return `${idx + 1}. ${label}`;
   };
+  const getColumnQuery = () => (columnInput ? String(columnInput.value || '').trim().toLowerCase() : '');
+  const getColumnCandidates = () => {
+    const query = getColumnQuery();
+    const all = columnLabels.map((label, index) => ({
+      index,
+      label: String(label || '').trim() || `列 ${index + 1}`,
+      display: getColumnLabel(index)
+    }));
+    if (!query) return all.slice(0, 30);
+    return all.filter(item => {
+      const humanIndex = String(item.index + 1);
+      const zeroIndex = String(item.index);
+      return humanIndex.includes(query) ||
+        zeroIndex === query ||
+        item.label.toLowerCase().includes(query) ||
+        item.display.toLowerCase().includes(query);
+    }).slice(0, 30);
+  };
+  const setSelectedColumn = (index, updateInput = true) => {
+    if (!columnInput) return;
+    const max = Math.max(0, columnLabels.length - 1);
+    selectedColumnIndex = Number.isInteger(index) ? Math.min(max, Math.max(0, index)) : 0;
+    columnInput.setAttribute('data-selected-col', String(selectedColumnIndex));
+    if (updateInput) columnInput.value = getColumnLabel(selectedColumnIndex);
+  };
+  const closeColumnOptions = () => {
+    if (!columnOptions || !columnInput) return;
+    columnOptions.hidden = true;
+    columnInput.setAttribute('aria-expanded', 'false');
+  };
+  const positionColumnOptions = () => {
+    if (!columnOptions || !columnInput) return;
+    const rect = columnInput.getBoundingClientRect();
+    const width = Math.min(320, Math.max(rect.width, window.innerWidth - 32));
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
+    const estimatedHeight = Math.min(220, columnOptions.scrollHeight || 220);
+    const topAbove = rect.top - estimatedHeight - 6;
+    const top = topAbove >= 8 ? topAbove : Math.min(window.innerHeight - estimatedHeight - 8, rect.bottom + 6);
+    columnOptions.style.left = `${Math.round(left)}px`;
+    columnOptions.style.top = `${Math.max(8, Math.round(top))}px`;
+    columnOptions.style.width = `${Math.round(width)}px`;
+  };
+  const renderColumnOptions = () => {
+    if (!columnOptions || !columnInput) return;
+    const candidates = getColumnCandidates();
+    columnOptions.textContent = '';
+    if (!candidates.length) {
+      const empty = document.createElement('div');
+      empty.className = 'csv-column-option';
+      empty.textContent = '无匹配列';
+      columnOptions.appendChild(empty);
+      columnOptions.hidden = false;
+      columnInput.setAttribute('aria-expanded', 'true');
+      positionColumnOptions();
+      return;
+    }
+    activeColumnOptionIndex = Math.min(Math.max(0, activeColumnOptionIndex), candidates.length - 1);
+    candidates.forEach((item, idx) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = `csv-column-option${idx === activeColumnOptionIndex ? ' active' : ''}`;
+      option.setAttribute('role', 'option');
+      option.setAttribute('data-col', String(item.index));
+      option.textContent = item.display;
+      option.addEventListener('mousedown', e => e.preventDefault());
+      option.addEventListener('click', () => {
+        setSelectedColumn(item.index);
+        closeColumnOptions();
+        if (columnValueInput) columnValueInput.focus();
+      });
+      columnOptions.appendChild(option);
+    });
+    columnOptions.hidden = false;
+    columnInput.setAttribute('aria-expanded', 'true');
+    positionColumnOptions();
+  };
+  const resolveTypedColumn = () => {
+    if (!columnInput) return selectedColumnIndex;
+    const raw = String(columnInput.value || '').trim();
+    if (!raw) {
+      setSelectedColumn(selectedColumnIndex);
+      return selectedColumnIndex;
+    }
+    const currentDisplay = getColumnLabel(selectedColumnIndex);
+    if (raw === currentDisplay) return selectedColumnIndex;
+    const exactZeroBased = Number(raw);
+    if (/^\d+$/.test(raw)) {
+      const idx = exactZeroBased >= 1 ? exactZeroBased - 1 : exactZeroBased;
+      if (Number.isInteger(idx) && idx >= 0 && idx < columnLabels.length) {
+        setSelectedColumn(idx);
+        return idx;
+      }
+    }
+    const candidates = getColumnCandidates();
+    if (candidates.length) {
+      const picked = candidates[Math.min(activeColumnOptionIndex, candidates.length - 1)];
+      setSelectedColumn(picked.index);
+      return picked.index;
+    }
+    setSelectedColumn(selectedColumnIndex);
+    return selectedColumnIndex;
+  };
   const renderColumnFilterChips = () => {
     if (!columnChips) return;
     columnChips.textContent = '';
@@ -164,8 +272,8 @@
     }
   };
   const addOrUpdateColumnFilter = () => {
-    if (!columnSelect || !columnValueInput) return;
-    const col = String(Number(columnSelect.value));
+    if (!columnInput || !columnValueInput) return;
+    const col = String(resolveTypedColumn());
     if (!/^\d+$/.test(col)) return;
     const value = columnValueInput.value.trim();
     if (value) {
@@ -181,6 +289,7 @@
     }
     renderColumnFilterChips();
     sendFilter(searchInput ? searchInput.value : '', true);
+    closeColumnOptions();
     columnValueInput.focus();
   };
 
@@ -221,6 +330,53 @@
       if (!nextHidden && columnValueInput) columnValueInput.focus();
     });
   }
+  if (columnInput) {
+    setSelectedColumn(selectedColumnIndex);
+    columnInput.addEventListener('focus', () => {
+      columnInput.select();
+      activeColumnOptionIndex = 0;
+      renderColumnOptions();
+    });
+    columnInput.addEventListener('input', () => {
+      activeColumnOptionIndex = 0;
+      renderColumnOptions();
+    });
+    columnInput.addEventListener('keydown', e => {
+      const candidates = getColumnCandidates();
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeColumnOptionIndex = candidates.length ? (activeColumnOptionIndex + 1) % candidates.length : 0;
+        renderColumnOptions();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeColumnOptionIndex = candidates.length ? (activeColumnOptionIndex - 1 + candidates.length) % candidates.length : 0;
+        renderColumnOptions();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        resolveTypedColumn();
+        closeColumnOptions();
+        if (columnValueInput) columnValueInput.focus();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedColumn(selectedColumnIndex);
+        closeColumnOptions();
+      }
+    });
+    columnInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        setSelectedColumn(selectedColumnIndex);
+        closeColumnOptions();
+      }, 120);
+    });
+    window.addEventListener('resize', () => {
+      if (!columnOptions || columnOptions.hidden) return;
+      positionColumnOptions();
+    }, { passive: true });
+    window.addEventListener('scroll', () => {
+      if (!columnOptions || columnOptions.hidden) return;
+      positionColumnOptions();
+    }, { passive: true });
+  }
   if (columnAddBtn) {
     columnAddBtn.addEventListener('click', addOrUpdateColumnFilter);
   }
@@ -246,11 +402,13 @@
     const detail = e.detail || {};
     if (Array.isArray(detail.columnLabels)) {
       columnLabels = detail.columnLabels;
+      setSelectedColumn(selectedColumnIndex);
     }
     columnFilters = normalizeColumnFilters(detail.columnFilters);
     renderColumnFilterChips();
     syncFilterStatus();
   });
   renderColumnFilterChips();
+  setSelectedColumn(selectedColumnIndex);
   syncFilterStatus();
 })();
