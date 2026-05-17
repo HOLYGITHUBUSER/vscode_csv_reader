@@ -1,11 +1,7 @@
-out
-node_modules
+out/
+node_modules/
 .vscode-test/
-backup-归档旧文件/
 .DS_Store
 e2e-浏览器测试/test-results/
 e2e-浏览器测试/visual-review/
 playwright-report/
-artifacts-安装包/csv-custom-pro-*.vsix
-!artifacts-安装包/csv-custom-pro-latest.vsix
-samples-试用样例/*.csv
