@@ -1,0 +1,32 @@
+id,name,age,email,salary,hire_date,is_active,department,description,tags,website,notes
+1,"Smith, John",32,john.smith@example.com,75000.50,2020-03-15,true,Engineering,"Senior developer, specializing in ""backend"" systems","python,go,rust",https://example.com/john,Normal row
+2,"O'Brien, Mary",28,mary.o'brien@example.com,68500.00,2021-07-22,true,"Marketing, Digital","Handles SEO & social media
+across multiple platforms","marketing,seo",https://example.com/mary,Multi-line cell
+3,李明,45,liming@例子.中国,120000.75,2015-01-10,false,研发部,"资深架构师,负责""核心系统""设计","架构,分布式,微服务",https://例子.中国/liming,Chinese characters
+4,"Müller, Hans",39,hans.müller@beispiel.de,"95,000.00",2018-11-30,true,Forschung,"Leitet das Team für KI & ML; arbeitet mit €, £, ¥","ai,ml,deutsch",https://beispiel.de/hans,"Unicode: ñ, ç, ü, ß"
+5,Tanaka 田中,52,tanaka@例え.jp,150000,2010-05-18,true,開発部,"日本語とEnglishが混在するfield","japanese,bilingual",https://例え.jp,Mixed languages
+6,,,no-name@example.com,,,,,"Missing most fields",,,Empty values test
+7,"Null, Test",0,,0.00,1970-01-01,false,,"","",,Zero and empty string
+8,"Quotes ""nested"" here",25,quotes@test.com,50000,2022-02-14,true,QA,"She said ""Hello, world!"" and left","testing,quotes",,Nested quotes
+9,"Line 1
+Line 2
+Line 3",33,multiline@test.com,72000.00,2019-09-01,true,Support,"Address:
+123 Main St
+Apt 4B
+City, State 12345","multi,line",https://test.com,Multi-line name
+10,"Tab	Separated	Name",41,tab@test.com,88000,2017-06-25,false,Operations,"Contains tabs:	here	and	here",tabs,https://test.com/tab,Tab characters
+11,"Semi;colon;name",29,semi@test.com,61000,2023-01-05,true,Sales,"Uses; semicolons; as; separators","sales,semicolons",https://test.com/semi,Semicolon test
+12,"Pipe|name|test",37,pipe@test.com,79500.25,2016-08-12,true,Analytics,"Pipes | in | text","data,analytics",https://test.com/pipe,Pipe characters
+13,"Back\slash\test",44,backslash@test.com,102000,2014-12-03,false,IT,"Path: C:\Users\test\file.txt","windows,paths",https://test.com,Backslashes
+14,"Emoji Test 🚀🎉",26,emoji@test.com,55000,2024-04-01,true,Creative,"Loves 🎨 design & 🎵 music ❤️","emoji,unicode,🔥",https://test.com/emoji,Emoji in data
+15,"  Whitespace  ",31,"  spaces@test.com  ",65000.50,2020-10-15,true,"  Padded Dept  ","  Leading and trailing spaces  ","  tag1 , tag2  ",https://test.com,Whitespace padding
+16,"Special <>&chars",48,special@test.com,135000,2012-03-20,true,Legal,"HTML entities: <div>&amp;</div>","html,xml,special",https://test.com/html,HTML special chars
+17,"Very Long Name That Goes On And On And Might Break Column Width For Testing Purposes In The Viewer",35,verylong@test.com,82500,2021-11-11,true,"Very Long Department Name For Testing Layout And Responsiveness","This is a very long description that contains a lot of text to test how the CSV reader handles wide columns and wrapping behavior when displaying data in a grid or table format for extended reading","long,description,test,wrap,overflow",https://a-very-long-domain-name-for-testing.example.com/path/to/resource?param1=value1&param2=value2,Long content test
+18,A,1,a@b.c,1,2000-01-01,true,A,A,a,https://a.b,Single char test
+19,"Numbers: 12345 67890",50,numbers@test.com,999999.99,2013-07-07,true,Finance,"Scientific: 1.5e10, Negative: -42, Hex: 0xFF","numbers,math",https://test.com,Various numbers
+20,"NULL",55,null@test.com,NULL,NULL,NULL,NULL,"The string NULL (not empty)",null,NULL,Literal NULL string
+21,Павел Иванов,42,pavel@example.ru,87000,2018-04-19,true,Разработка,"Русский текст с пунктуацией: !?.,;:","cyrillic,russian",https://пример.рф,Cyrillic text
+22,محمد علي,38,mohammed@example.sa,92000,2019-02-28,true,البحث,"النص العربي من اليمين إلى اليسار","arabic,rtl",https://مثال.السعودية,Right-to-left text
+23,"CSV, injection=HYPERLINK(""http://evil"")",30,csv@test.com,70000,2022-06-15,false,Security,"Formula injection: =1+1, @SUM(A1:A10), +CMD","security,injection",https://test.com,Formula injection test
+24,"Currency $€¥£₹",45,currency@test.com,105000.33,2011-09-09,true,Finance,"Prices: $100, €85, ¥10000, £75, ₹5500","currency,global",https://test.com,Currency symbols
+25,"Scientific α β γ",60,sci@test.com,180000,2005-05-05,true,Research,"Formulas: E=mc², π≈3.14159, √2≈1.414","math,science,greek",https://test.com,Scientific notation
