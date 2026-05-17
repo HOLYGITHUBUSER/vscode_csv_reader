@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { CsvDocument } from './csvDocument';
 import {
   escapeCss,
   escapeHtml,
@@ -52,14 +53,15 @@ class CsvEditorController {
   // Note: Global registry lives on CsvEditorProvider (wrapper)
 
   private static readonly BYTES_PER_MB = 1024 * 1024;
-  private static readonly DEFAULT_MAX_FILE_SIZE_MB = 100;
+  // UX guard rail for large-file modal (not a hard cap; CustomDocument bypasses 50MB TextDocument limit).
+  private static readonly DEFAULT_MAX_FILE_SIZE_MB = 500;
   private static readonly LARGE_FILE_CONTINUE_THIS_TIME = 'Continue This Time';
   private static readonly LARGE_FILE_IGNORE_FOREVER = 'Ignore Forever';
 
   private isUpdatingDocument = false;
   private isSaving = false;
   private currentWebviewPanel: vscode.WebviewPanel | undefined;
-  private document!: vscode.TextDocument;
+  private document!: CsvDocument;
   private separatorCache: { version: number; configKey: string; separator: string } | undefined;
   private isDiffContext = false;
   private chunkRenderState: ChunkRenderState | undefined;
@@ -75,8 +77,8 @@ class CsvEditorController {
 
   // (no static helpers here; see wrapper CsvEditorProvider)
 
-  public async resolveCustomTextEditor(
-    document: vscode.TextDocument,
+  public async resolveCustomEditor(
+    document: CsvDocument,
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
@@ -84,8 +86,10 @@ class CsvEditorController {
 
     const config = vscode.workspace.getConfiguration('csv', this.document.uri);
     if (!config.get<boolean>('enabled', true)) {
-      // When disabled, immediately hand off to the default editor and close this tab
-      await this.openWithDefaultEditorAndClose(webviewPanel, document.uri);
+      vscode.window.showInformationMessage(
+        'CSV: Extension is disabled (csv.enabled=false). Close this tab and use the default text editor, or re-enable csv.enabled.'
+      );
+      try { webviewPanel.dispose(); } catch {}
       return;
     }
 
@@ -211,18 +215,35 @@ class CsvEditorController {
       }
     });
 
-    const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
-      if (
-        e.document.uri.toString() === document.uri.toString() &&
-        !this.isUpdatingDocument &&
-        !this.isSaving
-      ) {
-        setTimeout(() => this.updateWebviewContent(), 250);
-      }
+    const changeDocumentSubscription = document.onDidChangeContent(() => {
+      if (this.isUpdatingDocument || this.isSaving) return;
+      this.updateWebviewContent();
     });
+
+    const watcher = vscode.workspace.createFileSystemWatcher(this.document.uri.fsPath);
+    const onExternalChange = async () => {
+      if (this.isSaving) return;
+      if (this.document.isDirty) {
+        vscode.window.showWarningMessage(
+          `CSV: "${path.basename(this.document.uri.fsPath)}" changed on disk but you have unsaved edits. Use 'File: Revert File' to discard your changes and reload.`
+        );
+        return;
+      }
+      try {
+        await this.document.revert();
+      } catch (err) {
+        console.error('CSV: external reload failed', err);
+      }
+    };
+    const watcherSubs: vscode.Disposable[] = [
+      watcher,
+      watcher.onDidChange(onExternalChange),
+      watcher.onDidCreate(onExternalChange)
+    ];
 
     webviewPanel.onDidDispose(() => {
       changeDocumentSubscription.dispose();
+      for (const d of watcherSubs) { try { d.dispose(); } catch {} }
       CsvEditorProvider.editors = CsvEditorProvider.editors.filter(ed => ed !== this);
       this.currentWebviewPanel = undefined;
     });
@@ -254,18 +275,6 @@ class CsvEditorController {
     return (fileSizeBytes / CsvEditorController.BYTES_PER_MB).toFixed(1);
   }
 
-  private async openWithDefaultEditorAndClose(webviewPanel: vscode.WebviewPanel, uri: vscode.Uri): Promise<void> {
-    try {
-      const opts: any = {
-        viewColumn: webviewPanel.viewColumn,
-        preserveFocus: !webviewPanel.active,
-        preview: webviewPanel.active ? webviewPanel.active : false
-      };
-      await vscode.commands.executeCommand('vscode.openWith', uri, 'default', opts);
-    } finally {
-      try { webviewPanel.dispose(); } catch {}
-    }
-  }
 
   private async confirmLargeFileOpen(
     config: vscode.WorkspaceConfiguration,
@@ -323,7 +332,9 @@ class CsvEditorController {
     const config = vscode.workspace.getConfiguration('csv', this.document.uri);
     if (!config.get<boolean>('enabled', true)) {
       this.currentWebviewPanel?.dispose();
-      vscode.commands.executeCommand('vscode.openWith', this.document.uri, 'default');
+      vscode.window.showInformationMessage(
+        'CSV: Extension disabled. Re-enable csv.enabled to view files in the table editor.'
+      );
     } else {
       if (this.currentWebviewPanel) {
         this.forceReload();
@@ -429,7 +440,7 @@ class CsvEditorController {
     let applied = false;
     try {
       const separator = this.getSeparator();
-      const oldText = this.document.getText();
+      const oldText = this.document.text;
       const result = Papa.parse(oldText, { dynamicTyping: false, delimiter: separator });
       const data = result.data as string[][];
       const hadRows = data.length;
@@ -462,14 +473,7 @@ class CsvEditorController {
         return;
       }
 
-      const fullRange = new vscode.Range(
-        0, 0,
-        this.document.lineCount,
-        this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-      );
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(this.document.uri, fullRange, newCsvText);
-      await vscode.workspace.applyEdit(edit);
+      this.document.replaceAll(newCsvText, 'edit cell');
       applied = true;
     } finally {
       this.isUpdatingDocument = false;
@@ -498,7 +502,7 @@ class CsvEditorController {
     this.isUpdatingDocument = true;
     try {
       const separator = this.getSeparator();
-      const oldText = this.document.getText();
+      const oldText = this.document.text;
       const result = Papa.parse(oldText, { dynamicTyping: false, delimiter: separator });
       const data = result.data as string[][];
       const updates: Array<{ row: number; col: number; value: string }> = [];
@@ -540,14 +544,7 @@ class CsvEditorController {
         return;
       }
 
-      const fullRange = new vscode.Range(
-        0, 0,
-        this.document.lineCount,
-        this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-      );
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(this.document.uri, fullRange, newCsvText);
-      await vscode.workspace.applyEdit(edit);
+      this.document.replaceAll(newCsvText, 'replace cells');
 
       this.updateWebviewContent();
     } finally {
@@ -734,7 +731,7 @@ class CsvEditorController {
     this.isUpdatingDocument = true;
     try {
       const separator = this.getSeparator();
-      const oldText = this.document.getText();
+      const oldText = this.document.text;
       const result = Papa.parse(oldText, { dynamicTyping: false, delimiter: separator });
       const data = result.data as string[][];
 
@@ -754,14 +751,7 @@ class CsvEditorController {
         return;
       }
 
-      const fullRange = new vscode.Range(
-        0, 0,
-        this.document.lineCount,
-        this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-      );
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(this.document.uri, fullRange, newCsvText);
-      await vscode.workspace.applyEdit(edit);
+      this.document.replaceAll(newCsvText, 'paste cells');
 
       this.updateWebviewContent();
       this.currentWebviewPanel?.webview.postMessage({
@@ -868,7 +858,7 @@ class CsvEditorController {
     }
 
     const separator = this.getSeparator();
-    const parsed = Papa.parse(this.document.getText(), { dynamicTyping: false, delimiter: separator });
+    const parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
     const data = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
     const hiddenRows = this.getHiddenRows();
     const offset = Math.min(Math.max(0, hiddenRows), data.length);
@@ -941,10 +931,16 @@ class CsvEditorController {
   private async handleSave() {
     this.isSaving = true;
     try {
-      const success = await this.document.save();
-      console.log(success ? 'CSV: Document saved' : 'CSV: Failed to save document');
+      await vscode.commands.executeCommand('workbench.action.files.save');
+      console.log('CSV: Document save requested');
     } catch (error) {
       console.error('CSV: Error saving document', error);
+      try {
+        await this.document.save();
+        console.log('CSV: Direct save fallback succeeded');
+      } catch (err2) {
+        console.error('CSV: Direct save fallback failed', err2);
+      }
     } finally {
       this.isSaving = false;
     }
@@ -953,7 +949,7 @@ class CsvEditorController {
   private async insertColumn(index: number) {
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     for (const row of data) {
@@ -963,14 +959,7 @@ class CsvEditorController {
       row.splice(index, 0, '');
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -979,7 +968,7 @@ class CsvEditorController {
     if (count <= 0) return;
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     for (let k = 0; k < count; k++) {
@@ -991,14 +980,7 @@ class CsvEditorController {
       }
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1006,7 +988,7 @@ class CsvEditorController {
   private async deleteColumn(index: number) {
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     for (const row of data) {
@@ -1015,14 +997,7 @@ class CsvEditorController {
       }
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1031,7 +1006,7 @@ class CsvEditorController {
     if (!indices || !indices.length) return;
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     const sorted = [...indices].sort((a,b)=>b-a);
@@ -1043,14 +1018,7 @@ class CsvEditorController {
       }
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1062,7 +1030,7 @@ class CsvEditorController {
     const separator    = this.getSeparator();
     const hidden       = this.getHiddenRows();
 
-    const text   = this.document.getText();
+    const text   = this.document.text;
     // First sort since the last non-sort mutation? Snapshot so user can later
     // cycle back to "original" order via resetSort.
     if (this.sortSnapshotText === null) {
@@ -1128,15 +1096,7 @@ class CsvEditorController {
 
     const newCsv = Papa.unparse(sanitized, { delimiter: separator });
 
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newCsv);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newCsv, `sort column ${index + 1}`);
 
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
@@ -1155,15 +1115,8 @@ class CsvEditorController {
     }
     this.isUpdatingDocument = true;
     try {
-      if (this.document.getText() !== snapshot) {
-        const fullRange = new vscode.Range(
-          0, 0,
-          this.document.lineCount,
-          this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-        );
-        const edit = new vscode.WorkspaceEdit();
-        edit.replace(this.document.uri, fullRange, snapshot);
-        await vscode.workspace.applyEdit(edit);
+      if (this.document.text !== snapshot) {
+        this.document.replaceAll(snapshot, 'reset sort');
       }
       this.sortSnapshotText = null;
     } finally {
@@ -1176,7 +1129,7 @@ class CsvEditorController {
   private async insertRow(index: number) {
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     const numColumns = data.reduce((max, r) => Math.max(max, r.length), 0);
@@ -1186,14 +1139,7 @@ class CsvEditorController {
     }
     data.splice(index, 0, newRow);
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1202,7 +1148,7 @@ class CsvEditorController {
     if (count <= 0) return;
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     const numColumns = data.reduce((max, r) => Math.max(max, r.length), 0);
@@ -1214,14 +1160,7 @@ class CsvEditorController {
       data.splice(index, 0, newRow);
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1229,21 +1168,14 @@ class CsvEditorController {
   private async deleteRow(index: number) {
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     if (index < data.length) {
       data.splice(index, 1);
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1252,7 +1184,7 @@ class CsvEditorController {
     if (!indices || !indices.length) return;
     this.isUpdatingDocument = true;
     const separator = this.getSeparator();
-    const text = this.document.getText();
+    const text = this.document.text;
     const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
     const data = result.data as string[][];
     const sorted = [...indices].sort((a,b)=>b-a);
@@ -1262,14 +1194,7 @@ class CsvEditorController {
       }
     }
     const newText = Papa.unparse(data, { delimiter: separator });
-    const fullRange = new vscode.Range(
-      0, 0,
-      this.document.lineCount,
-      this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-    );
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(this.document.uri, fullRange, newText);
-    await vscode.workspace.applyEdit(edit);
+    this.document.replaceAll(newText, 'structural edit');
     this.isUpdatingDocument = false;
     this.updateWebviewContent();
   }
@@ -1321,7 +1246,7 @@ class CsvEditorController {
     this.isUpdatingDocument = true;
     try {
       const separator = this.getSeparator();
-      const text = this.document.getText();
+      const text = this.document.text;
       const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
       const data = result.data as string[][];
       const numColumns = data.reduce((max, row) => Math.max(max, row.length), 0);
@@ -1341,14 +1266,7 @@ class CsvEditorController {
       });
 
       const newText = Papa.unparse(reorderedData, { delimiter: separator });
-      const fullRange = new vscode.Range(
-        0, 0,
-        this.document.lineCount,
-        this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-      );
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(this.document.uri, fullRange, newText);
-      await vscode.workspace.applyEdit(edit);
+      this.document.replaceAll(newText, 'structural edit');
       this.updateWebviewContent();
     } finally {
       this.isUpdatingDocument = false;
@@ -1359,7 +1277,7 @@ class CsvEditorController {
     this.isUpdatingDocument = true;
     try {
       const separator = this.getSeparator();
-      const text = this.document.getText();
+      const text = this.document.text;
       const result = Papa.parse(text, { dynamicTyping: false, delimiter: separator });
       const data = result.data as string[][];
       if (!data.length) return;
@@ -1368,14 +1286,7 @@ class CsvEditorController {
       if (!changed) return;
 
       const newText = Papa.unparse(reordered, { delimiter: separator });
-      const fullRange = new vscode.Range(
-        0, 0,
-        this.document.lineCount,
-        this.document.lineCount ? this.document.lineAt(this.document.lineCount - 1).text.length : 0
-      );
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(this.document.uri, fullRange, newText);
-      await vscode.workspace.applyEdit(edit);
+      this.document.replaceAll(newText, 'sort column');
       this.updateWebviewContent();
     } finally {
       this.isUpdatingDocument = false;
@@ -1395,7 +1306,7 @@ class CsvEditorController {
 
     let parsed;
     try {
-      parsed = Papa.parse(this.document.getText(), { dynamicTyping: false, delimiter: separator });
+      parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
       console.log(`CSV: Parsed CSV data with ${parsed.data.length} rows`);
     } catch (error) {
       console.error('CSV: Error parsing CSV content', error);
@@ -1931,7 +1842,7 @@ class CsvEditorController {
     }
 
     const filePath = this.document?.uri.fsPath || this.document?.uri.path || '';
-    const text = this.document.getText();
+    const text = this.document.text;
     const separator = CsvEditorProvider.resolveInheritedSeparator(filePath, text, settings);
     this.separatorCache = { version, configKey, separator };
     return separator;
@@ -1995,7 +1906,7 @@ class CsvEditorController {
 
     let parsed;
     try {
-      parsed = Papa.parse(this.document.getText(), { dynamicTyping: false, delimiter: separator });
+      parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
     } catch {
       parsed = { data: [] };
     }
@@ -2131,7 +2042,8 @@ class CsvEditorController {
 }
 
 // Wrapper provider: one instance registered with VS Code.
-export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
+// CustomEditorProvider<CsvDocument> bypasses VS Code's 50MB TextDocument limit.
+export class CsvEditorProvider implements vscode.CustomEditorProvider<CsvDocument> {
   public static readonly viewType = 'csv.editor';
   public static editors: CsvEditorController[] = [];
   public static currentActive: CsvEditorController | undefined;
@@ -2173,8 +2085,54 @@ export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
-  public async resolveCustomTextEditor(
-    document: vscode.TextDocument,
+  private readonly _onDidChangeCustomDocument =
+    new vscode.EventEmitter<vscode.CustomDocumentEditEvent<CsvDocument>>();
+  public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
+
+  public async openCustomDocument(
+    uri: vscode.Uri,
+    _openContext: vscode.CustomDocumentOpenContext,
+    _token: vscode.CancellationToken
+  ): Promise<CsvDocument> {
+    console.log(`CSV(reg): opening custom document ${uri.toString()}`);
+    const doc = await CsvDocument.create(uri, 'utf-8');
+    const sub = doc.onDidChange(e => this._onDidChangeCustomDocument.fire(e));
+    doc.onDidDispose(() => sub.dispose());
+    return doc;
+  }
+
+  public async saveCustomDocument(document: CsvDocument, _cancellation: vscode.CancellationToken): Promise<void> {
+    await document.save();
+  }
+
+  public async saveCustomDocumentAs(
+    document: CsvDocument,
+    destination: vscode.Uri,
+    _cancellation: vscode.CancellationToken
+  ): Promise<void> {
+    await document.save(destination);
+  }
+
+  public async revertCustomDocument(document: CsvDocument, _cancellation: vscode.CancellationToken): Promise<void> {
+    await document.revert();
+  }
+
+  public async backupCustomDocument(
+    document: CsvDocument,
+    context: vscode.CustomDocumentBackupContext,
+    _cancellation: vscode.CancellationToken
+  ): Promise<vscode.CustomDocumentBackup> {
+    await document.save(context.destination);
+    return {
+      id: context.destination.toString(),
+      delete: async () => {
+        try { await vscode.workspace.fs.delete(context.destination); } catch { /* best-effort */ }
+      }
+    };
+  }
+
+  public async resolveCustomEditor(
+    document: CsvDocument,
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
@@ -2186,7 +2144,7 @@ export class CsvEditorProvider implements vscode.CustomTextEditorProvider {
         CsvEditorProvider.currentActive = controller;
       }
     });
-    await controller.resolveCustomTextEditor(document, webviewPanel, _token);
+    await controller.resolveCustomEditor(document, webviewPanel, _token);
   }
 
   public static getActiveProvider(): CsvEditorController | undefined {
