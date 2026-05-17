@@ -2,6 +2,5 @@ out/
 node_modules/
 .vscode-test/
 .DS_Store
-e2e-浏览器测试/test-results/
-e2e-浏览器测试/visual-review/
-playwright-report/
+test-results/
+backup-归档旧文件/

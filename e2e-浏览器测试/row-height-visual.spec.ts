@@ -16,7 +16,7 @@ const cfg = {
 
 test('row-height modes render multiline cells and save review screenshots', async ({ page }) => {
   const { url, dir } = writeHarnessHtml({ ...cfg, rowHeightMode: 'compact' as const });
-  const screenshotDir = path.resolve(__dirname, 'visual-review', 'row-height');
+  const screenshotDir = path.resolve(__dirname, 'test-results', 'row-height');
   fs.rmSync(screenshotDir, { recursive: true, force: true });
   fs.mkdirSync(screenshotDir, { recursive: true });
 
