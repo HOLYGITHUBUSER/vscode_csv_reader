@@ -10,7 +10,7 @@ const path = require('path');
 
 const ROWS = Number(process.env.ROW_COUNT || 1105);
 // Write directly into the repo's test folder with the new name
-const OUT = path.join(process.cwd(), 'extension-扩展逻辑', 'test', 'super_example.csv');
+const OUT = path.join(process.cwd(), 'samples-试用样例', 'super_example.csv');
 
 // Wild/exotic animals for superhero theming
 const animals = [

@@ -106,6 +106,7 @@ function buildDom(cfg: HarnessConfig): string {
 <script id="__csvChunks" type="application/json">[]</script>
 <script id="__csvColumnLabels" type="application/json">${JSON.stringify(cfg.header.cells)}</script>
 <script id="__csvColumnFilters" type="application/json">{}</script>
+<script id="__csvGlobalSearch" type="application/json">""</script>
 
 <!-- Context menu + Floating filter panel + Find widget (main.js's top-level
      querySelectors touch these; shipping empty stubs so init doesn't crash) -->
@@ -115,6 +116,8 @@ function buildDom(cfg: HarnessConfig): string {
 <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid #ccc;border-radius:6px;background:#fff;">
   <span style="font-weight:600;">过滤:</span>
   <span id="csvFilterStatus" style="color:#999;font-size:0.85em;"></span>
+  <input id="csvGlobalSearch" type="text" placeholder="全局搜索" style="height:24px;width:140px;border:1px solid #ccc;border-radius:3px;background:#fff;padding:0 6px;font-size:inherit;outline:none;">
+  <button id="csvClearFilter" type="button" style="height:24px;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;font-size:inherit;padding:0 6px;display:none;">×</button>
   <div class="csv-column-combobox">
     <input id="csvColumnFilterColumn" type="text" role="combobox" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0">
     <div id="csvColumnFilterOptions" role="listbox" hidden></div>

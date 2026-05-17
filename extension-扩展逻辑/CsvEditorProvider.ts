@@ -1377,7 +1377,8 @@ class CsvEditorController {
       mouseWheelZoomInvert,
       rowHeightMode,
       columnLabels,
-      columnFilters: this.filterSortState.columnFilters
+      columnFilters: this.filterSortState.columnFilters,
+      globalSearch: this.filterSortState.globalSearch
     });
   }
 
@@ -1444,8 +1445,9 @@ class CsvEditorController {
     rowHeightMode: 'compact' | 'wrap';
     columnLabels: string[];
     columnFilters: Record<string, CsvColumnFilterCondition | string>;
+    globalSearch: string;
   }): string {
-    const { webview, nonce, fontFamily, fontSize, cellPadding, separator, tableHtml, chunksJson, extraColumnColorCss, nextChunkStart, hasRemoteChunks, mouseWheelZoomEnabled, mouseWheelZoomInvert, rowHeightMode, columnLabels, columnFilters } = args;
+    const { webview, nonce, fontFamily, fontSize, cellPadding, separator, tableHtml, chunksJson, extraColumnColorCss, nextChunkStart, hasRemoteChunks, mouseWheelZoomEnabled, mouseWheelZoomInvert, rowHeightMode, columnLabels, columnFilters, globalSearch } = args;
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
     // Build script URI using file path for compatibility (older APIs may lack Uri.joinPath)
     const scriptUri = webview.asWebviewUri(
@@ -1462,6 +1464,7 @@ class CsvEditorController {
     const sepCode = (separator && separator.length > 0) ? separator.codePointAt(0)! : ','.codePointAt(0)!;
     const columnLabelsJson = jsonForScriptTag(columnLabels);
     const columnFiltersJson = jsonForScriptTag(columnFilters || {});
+    const globalSearchJson = jsonForScriptTag(typeof globalSearch === 'string' ? globalSearch : '');
 
     return `<!DOCTYPE html>
 <html>
@@ -1740,6 +1743,8 @@ class CsvEditorController {
     <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.92)':'rgba(255,255,255,0.96)'};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0.88;transition:opacity 0.15s ease;font-size:inherit;">
       <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">过滤:</span>
       <span style="color:${isDark?'#888':'#999'};font-size:0.85em;" id="csvFilterStatus"></span>
+      <input id="csvGlobalSearch" type="text" placeholder="全局搜索" style="height:24px;width:140px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};padding:0 6px;font-size:inherit;outline:none;" title="在所有列中搜索，输入后 Enter 或等待自动搜索">
+      <button id="csvClearFilter" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 6px;display:none;" title="清空全局搜索">×</button>
       <div class="csv-column-combobox">
         <input id="csvColumnFilterColumn" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0" title="输入列名或列号搜索" placeholder="搜索列名/列号">
         <div id="csvColumnFilterOptions" role="listbox" hidden></div>
@@ -1762,6 +1767,7 @@ class CsvEditorController {
     <script id="__csvChunks" type="application/json" nonce="${nonce}">${chunksJson}</script>
     <script id="__csvColumnLabels" type="application/json" nonce="${nonce}">${columnLabelsJson}</script>
     <script id="__csvColumnFilters" type="application/json" nonce="${nonce}">${columnFiltersJson}</script>
+    <script id="__csvGlobalSearch" type="application/json" nonce="${nonce}">${globalSearchJson}</script>
 
     <div id="findReplaceWidget" class="replace-collapsed" role="group" aria-label="Find and Replace">
       <div id="replaceToggleGutter" class="fr-gutter">
@@ -1975,6 +1981,7 @@ class CsvEditorController {
       isDark,
       columnLabels,
       columnFilters: this.filterSortState.columnFilters,
+      globalSearch: this.filterSortState.globalSearch,
       nextChunkStart: chunkMeta.nextChunkStart,
       hasRemoteChunks: chunkMeta.hasRemoteChunks
     });

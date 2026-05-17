@@ -250,8 +250,23 @@
   };
   const syncFilterStatus = () => {
     if (!filterStatus) return;
-    const count = Object.keys(columnFilters).length;
-    filterStatus.textContent = count > 0 ? `${count} 个列过滤` : '';
+    const colCount = Object.keys(columnFilters).length;
+    const hasGlobal = searchInput && searchInput.value.length > 0;
+    const parts = [];
+    if (hasGlobal) parts.push(`全局:"${searchInput.value}"`);
+    if (colCount > 0) parts.push(`${colCount} 个列过滤`);
+    filterStatus.textContent = parts.join(' · ');
+  };
+  let searchLoadingTimer = null;
+  const setSearchLoading = (on) => {
+    if (!filterStatus) return;
+    if (on) {
+      filterStatus.textContent = '搜索中…';
+    } else {
+      // Cancel any pending loading indicator
+      if (searchLoadingTimer) { clearTimeout(searchLoadingTimer); searchLoadingTimer = null; }
+      syncFilterStatus();
+    }
   };
   const sendFilter = (globalSearch, immediate) => {
     syncFilterStatus();
@@ -299,16 +314,18 @@
   };
 
   if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      syncClearVisibility();
-      sendFilter(searchInput.value, /*immediate*/ false);
-    });
-    // Apply filter immediately on Enter so power-users don't have to wait 200ms.
+    // Only search on Enter — no debounce on keystroke to avoid lag/jump for large files.
     searchInput.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
+        e.preventDefault();
         if (filterTimer) { clearTimeout(filterTimer); filterTimer = null; }
-        sendFilter(searchInput.value, /*immediate*/ true);
+        const value = searchInput.value;
+        if (value) setSearchLoading(true);
+        sendFilter(value, /*immediate*/ true);
       }
+    });
+    searchInput.addEventListener('input', () => {
+      syncClearVisibility();
     });
   }
 
@@ -318,6 +335,7 @@
       searchInput.value = '';
       syncClearVisibility();
       if (filterTimer) { clearTimeout(filterTimer); filterTimer = null; }
+      setSearchLoading(false);
       sendFilter('', /*immediate*/ true);
       searchInput.focus();
     });
@@ -405,6 +423,11 @@
       setSelectedColumn(selectedColumnIndex);
     }
     columnFilters = normalizeColumnFilters(detail.columnFilters);
+    // Restore global search from extension state (survives webview re-render)
+    const savedGlobal = (typeof detail.globalSearch === 'string') ? detail.globalSearch : '';
+    if (searchInput) searchInput.value = savedGlobal;
+    syncClearVisibility();
+    setSearchLoading(false);
     renderColumnFilterChips();
     syncFilterStatus();
   });

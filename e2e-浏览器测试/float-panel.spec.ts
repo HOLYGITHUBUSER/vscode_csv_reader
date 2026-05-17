@@ -54,7 +54,7 @@ test('floating panel: column filter builder is visible and fires filterSort', as
     fullPage: true,
   });
 
-  await expect(page.locator('#csvGlobalSearch')).toHaveCount(0);
+  await expect(page.locator('#csvGlobalSearch')).toBeVisible();
   await expect(page.locator('#csvColumnFilterColumn')).toBeVisible();
   await expect(page.locator('#csvColumnFilterValue')).toBeVisible();
 
@@ -216,6 +216,133 @@ test('filterSortResult message from host rewrites tbody', async ({ page }) => {
   // Sort indicator cleared.
   await expect(page.locator('th[data-col="0"]')).not.toHaveClass(/sort-asc/);
   await expect(page.locator('th[data-col="0"]')).not.toHaveClass(/sort-desc/);
+});
+
+test('floating panel: global search input fires filterSort with globalSearch field', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  const pageErrors: string[] = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  page.on('console', m => { if (m.type() === 'error') pageErrors.push(`[console.error] ${m.text()}`); });
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+  expect(pageErrors).toEqual([]);
+
+  // Global search input is visible and initially empty
+  const globalInput = page.locator('#csvGlobalSearch');
+  await expect(globalInput).toBeVisible();
+  await expect(globalInput).toHaveValue('');
+
+  // Type a search term and press Enter
+  await globalInput.fill('Alice');
+  await globalInput.press('Enter');
+
+  const posted = await page.evaluate(() => (window as any).__posted as any[]);
+  const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
+  expect(
+    filterMsgs.length,
+    `Expected global search to emit filterSort; got: ${JSON.stringify(posted)}`,
+  ).toBeGreaterThan(0);
+
+  const last = filterMsgs[filterMsgs.length - 1];
+  expect(last.globalSearch).toBe('Alice');
+  expect(last.columnFilters).toEqual({});
+});
+
+test('floating panel: global search AND column filter together', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+
+  // Add a column filter: Age contains "30"
+  await chooseColumn(page, 'Age');
+  await page.locator('#csvColumnFilterValue').fill('30');
+  await page.locator('#csvColumnFilterAdd').click();
+
+  // Add global search: "NYC"
+  const globalInput = page.locator('#csvGlobalSearch');
+  await globalInput.fill('NYC');
+  await globalInput.press('Enter');
+
+  const posted = await page.evaluate(() => (window as any).__posted as any[]);
+  const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
+  const last = filterMsgs[filterMsgs.length - 1];
+  // Only Alice (row 1) has both Age "30" AND City containing "NYC"
+  expect(last.globalSearch).toBe('NYC');
+  expect(last.columnFilters).toEqual({
+    '1': { value: '30', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+  });
+});
+
+test('floating panel: filterSortResult with globalSearch restores input value', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+
+  // Type in global search
+  const globalInput = page.locator('#csvGlobalSearch');
+  await globalInput.fill('Bob');
+
+  // Simulate host posting filterSortResult with globalSearch preserved
+  await page.evaluate(() => {
+    const msg = {
+      type: 'filterSortResult',
+      addSerialIndex: true,
+      sortCol: -1,
+      sortDir: null,
+      rows: [],
+      columnFilters: {},
+      globalSearch: 'Bob',
+    };
+    window.postMessage(msg, '*');
+  });
+
+  // The global search input should retain the value after filterSortResult
+  await expect(globalInput).toHaveValue('Bob');
+});
+
+test('floating panel: clear button clears global search but keeps column filters', async ({ page }) => {
+  const { url, dir } = writeHarnessHtml(cfg);
+  harnessDir = dir;
+
+  await page.goto(url);
+  await expect(page.locator('#csv-root')).toBeVisible();
+
+  // Add a column filter
+  await chooseColumn(page, 'City');
+  await page.locator('#csvColumnFilterValue').fill('NYC');
+  await page.locator('#csvColumnFilterAdd').click();
+
+  // Add global search
+  const globalInput = page.locator('#csvGlobalSearch');
+  await globalInput.fill('Alice');
+  await globalInput.press('Enter');
+
+  // csvClearFilter button should now be visible
+  const clearBtn = page.locator('#csvClearFilter');
+  await expect(clearBtn).toBeVisible();
+
+  // Clear global search
+  await clearBtn.click();
+
+  // Global search should be empty
+  await expect(globalInput).toHaveValue('');
+  // Column filter should still be present
+  await expect(page.locator('#csvColumnFilterChips .csv-filter-chip')).toHaveCount(1);
+
+  const posted = await page.evaluate(() => (window as any).__posted as any[]);
+  const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
+  const last = filterMsgs[filterMsgs.length - 1];
+  expect(last.globalSearch).toBe('');
+  expect(last.columnFilters).toEqual({
+    '2': { value: 'NYC', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+  });
 });
 
 test('floating panel: clear button resets column filters', async ({ page }) => {

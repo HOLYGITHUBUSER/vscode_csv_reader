@@ -55,7 +55,7 @@ test.describe('所有UI按钮验证', () => {
   test('列过滤输入框 - 可见且可添加条件', async ({ page }) => {
     const input = page.locator('#csvColumnFilterValue');
     await expect(input).toBeVisible();
-    await expect(page.locator('#csvGlobalSearch')).toHaveCount(0);
+    await expect(page.locator('#csvGlobalSearch')).toBeVisible();
     await input.click();
     await input.fill('Alice');
     await page.locator('#csvColumnFilterAdd').click();
