@@ -28,6 +28,8 @@ let lastContextIsHeader = false;   // remembers whether we right-clicked a <th>
 let isUpdating = false, isSelecting = false, anchorCell = null, rangeEndCell = null, currentSelection = [];
 let startCell = null, endCell = null, selectionMode = "cell";
 let editingCell = null, originalCellValue = "";
+// 005-G1: 当前模式（browse / edit / analyze）
+let currentMode = 'edit';
 // Edit mode:
 //  - 'quick': started by typing a character (not Enter)
 //  - 'detail': started by Enter or double-click
@@ -91,6 +93,128 @@ dragIndicator.style.zIndex = '20000';
 dragIndicator.style.background = '#0a84ff';
 dragIndicator.style.display = 'none';
 document.body.appendChild(dragIndicator);
+
+/* ──────── Header menu (column header click → 3-action menu) ────────
+ * Single-click on a column header <th data-col="N"> opens a small floating
+ * menu with three actions: select column, copy column, sort column. This
+ * replaces the previous behaviour of "single click selects entire column"
+ * which violated the muscle-memory of "click cell = select cell". Mouse
+ * drag on the header still selects a column range (advanced behaviour).
+ */
+const createHeaderMenu = () => {
+  const menu = document.createElement('div');
+  menu.setAttribute('data-header-menu', 'true');
+  menu.setAttribute('role', 'menu');
+  menu.style.position = 'fixed';
+  menu.style.zIndex = '20001';
+  menu.style.minWidth = '160px';
+  menu.style.padding = '4px 0';
+  menu.style.background = 'var(--vscode-menu-background, #252526)';
+  menu.style.color = 'var(--vscode-menu-foreground, #cccccc)';
+  menu.style.border = '1px solid var(--vscode-menu-border, #454545)';
+  menu.style.borderRadius = '3px';
+  menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+  menu.style.display = 'none';
+  menu.style.fontSize = '13px';
+  menu.style.fontFamily = 'var(--vscode-font-family)';
+  menu.style.userSelect = 'none';
+
+  const actions = [
+    { id: 'select',   label: '选中整列',     shortcut: '' },
+    { id: 'copy',     label: '复制整列',     shortcut: '' },
+    { id: 'rename',   label: '重命名列',     shortcut: '' },
+    { id: 'sort',     label: '排序（升/降/还原）', shortcut: '' },
+    { id: 'autofit',  label: '列宽自动适配', shortcut: '' },
+    { id: 'hide',     label: '隐藏列',       shortcut: '' }
+  ];
+  const buttons = actions.map(a => {
+    const btn = document.createElement('button');
+    btn.setAttribute('role', 'menuitem');
+    btn.dataset.action = a.id;
+    btn.textContent = a.label;
+    btn.style.display = 'flex';
+    btn.style.justifyContent = 'space-between';
+    btn.style.alignItems = 'center';
+    btn.style.width = '100%';
+    btn.style.padding = '4px 12px';
+    btn.style.border = 'none';
+    btn.style.background = 'transparent';
+    btn.style.color = 'inherit';
+    btn.style.cursor = 'pointer';
+    btn.style.textAlign = 'left';
+    btn.style.font = 'inherit';
+    btn.onmouseenter = () => { btn.style.background = 'var(--vscode-menu-selectionBackground, #094771)'; };
+    btn.onmouseleave = () => { btn.style.background = 'transparent'; };
+    if (a.shortcut) {
+      const sc = document.createElement('span');
+      sc.textContent = a.shortcut;
+      sc.style.opacity = '0.6';
+      sc.style.fontSize = '11px';
+      sc.style.marginLeft = '16px';
+      btn.appendChild(document.createTextNode(a.label + '  '));
+      btn.appendChild(sc);
+      btn.textContent = '';
+      btn.appendChild(document.createTextNode(a.label));
+      btn.appendChild(sc);
+    }
+    menu.appendChild(btn);
+    return btn;
+  });
+
+  document.body.appendChild(menu);
+
+  let openCol = -1;
+  let onActionCb = null;
+
+  const close = () => {
+    menu.style.display = 'none';
+    openCol = -1;
+    onActionCb = null;
+  };
+
+  const isOpen = () => menu.style.display !== 'none';
+
+  const open = (col, pageX, pageY, cb) => {
+    openCol = col;
+    onActionCb = cb;
+    // Position; clamp to viewport (small screens)
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    menu.style.display = 'block';
+    const rect = menu.getBoundingClientRect();
+    let left = pageX;
+    let top = pageY;
+    if (left + rect.width > vw) left = Math.max(0, vw - rect.width - 4);
+    if (top + rect.height > vh) top = Math.max(0, vh - rect.height - 4);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    // 003-P0: 把焦点移到浮层（第一按钮），让 Tab/Enter/方向键立即可用
+    if (buttons[0]) try { buttons[0].focus({ preventScroll: true }); } catch {}
+  };
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const cb = onActionCb;
+      const col = openCol;
+      const action = btn.dataset.action;
+      close();
+      if (cb) cb(action, col);
+    });
+  });
+
+  // Dismiss on any document click outside the menu
+  document.addEventListener('mousedown', e => {
+    if (!isOpen()) return;
+    if (menu.contains(e.target)) return;
+    close();
+  }, true);
+
+  return { open, close, isOpen };
+};
+
+const headerMenu = createHeaderMenu();
 let columnSizeState = {};
 let rowSizeState = {};
 
@@ -662,6 +786,23 @@ const resetColumnWidth = col => {
     cell.style.maxWidth = '';
   });
 };
+
+// 003-F1: 自动适配列宽 = 扫该列所有 cell 的 scrollWidth，取 max
+const autoFitColumn = col => {
+  const cells = table.querySelectorAll(`[data-col="${col}"] .cell-body`);
+  let maxW = 80;
+  cells.forEach(cell => {
+    const w = (cell.scrollWidth || 0) + 16;
+    if (w > maxW) maxW = w;
+  });
+  columnSizeState[String(col)] = maxW;
+  table.querySelectorAll(`[data-col="${col}"]`).forEach(cell => {
+    cell.style.width = `${maxW}px`;
+    cell.style.minWidth = `${maxW}px`;
+    cell.style.maxWidth = `${maxW}px`;
+  });
+  persistState();
+};
 const applyRowHeight = (row, heightPx) => {
   const height = Math.max(getMinRowHeight(), Math.round(heightPx));
   rowSizeState[String(row)] = height;
@@ -835,6 +976,41 @@ document.addEventListener('click', (e) => {
 table.addEventListener('contextmenu', e => {
   const target = getCellTarget(e.target);
   if (!target) return;
+  // 003-F1 revised: 右键表头 → 用统一 headerMenu
+  if (isColumnHeaderCell(target) && target.tagName === 'TH' && target.hasAttribute('data-col')) {
+    e.preventDefault();
+    const col = parseInt(target.getAttribute('data-col') || '-1', 10);
+    if (Number.isNaN(col) || col < 0) return;
+    headerMenu.open(col, e.pageX, e.pageY, (action, c) => {
+      if (action === 'select') {
+        selectFullColumnRange(c, c);
+        const headerTh = table.querySelector(`thead th[data-col="${c}"]`);
+        if (headerTh) { anchorCell = headerTh; rangeEndCell = headerTh; }
+        persistState();
+      } else if (action === 'copy') {
+        clearSelection();
+        table.querySelectorAll(`[data-col="${c}"]`).forEach(cell => {
+          cell.classList.add('selected'); currentSelection.push(cell);
+        });
+        const headerTh = table.querySelector(`thead th[data-col="${c}"]`);
+        if (headerTh) { anchorCell = headerTh; rangeEndCell = headerTh; }
+        copySelectionToClipboard();
+      } else if (action === 'sort') {
+        toggleSortOnColumn(c);
+      } else if (action === 'autofit') {
+        autoFitColumn(c);
+      } else if (action === 'rename') {
+        const headerTh = table.querySelector(`thead th[data-col="${c}"]`);
+        if (headerTh) {
+          clearSelection();
+          editCell(headerTh, null, 'detail');
+        }
+      } else if (action === 'hide') {
+        vscode.postMessage({ type: 'hideColumn', col: c });
+      }
+    });
+    return;
+  }
   const colAttr = target.getAttribute('data-col');
   const rowAttr = target.getAttribute('data-row');
   const col = parseInt(colAttr);
@@ -989,7 +1165,18 @@ table.addEventListener('mousedown', e => {
     return;
   }
   /* ──────── END NEW BLOCK ──────── */
-  
+
+  // ──────── NEW (003-F1, revised): column header single-click → no-op ────────
+  // Industry consensus (Excel/Sheets vs Airtable/Notion): single-click on
+  // header is a source of "I clicked and my selection got nuked" complaints.
+  // New behaviour: single-click does NOTHING; user must either:
+  //   - right-click → headerMenu (重命名/排序/复制/列宽/隐藏)
+  //   - double-click → rename column in place
+  //   - drag → select column range (advanced)
+  //   - click the sort-btn in the header → toggle sort
+  // The actual click still proceeds to set startCell/anchor so drag-select works.
+  /* ──────── END NEW BLOCK ──────── */
+
   selectionMode = isColumnHeaderCell(target) ? "column" : (target.getAttribute('data-col') === '-1' ? "row" : "cell");
   startCell = target; endCell = target; rangeEndCell = target; isSelecting = true; e.preventDefault();
   target.focus();
@@ -1066,6 +1253,14 @@ table.addEventListener('mouseup', e => {
     rangeEndCell = endCell;
     persistState();
   } else if(selectionMode === "column"){
+    // 003-F1 revised: 单击列头不响应；只有真正拖动（startCell !== endCell）才选列
+    if (startCell === endCell) {
+      // Just set anchor, no visible selection
+      anchorCell = startCell;
+      rangeEndCell = endCell;
+      persistState();
+      return;
+    }
     const startCol = parseInt(startCell.getAttribute('data-col'));
     const endCol = parseInt(endCell.getAttribute('data-col'));
     selectFullColumnRange(startCol, endCol); anchorCell = startCell; rangeEndCell = endCell; persistState();
@@ -1290,6 +1485,12 @@ document.addEventListener('keydown', e => {
   if (csvFindReplace && csvFindReplace.isOpen() && e.key === 'Escape') {
     e.preventDefault();
     csvFindReplace.close();
+    return;
+  }
+  // 003-F1: Esc closes the column header action menu
+  if (headerMenu && headerMenu.isOpen() && e.key === 'Escape') {
+    e.preventDefault();
+    headerMenu.close();
     return;
   }
   if (csvFindReplace && csvFindReplace.isFindWidgetTarget(e.target)) {
@@ -1749,6 +1950,12 @@ const editCell = (cell, event, mode = 'detail') => {
     removeNewlineSentinels(cell);
     const value = cell.textContent;
     const coords = getCellCoords(cell);
+    // 003-F5: 标记"已修改"（浅黄背景 + ⚠ 未保存）
+    if (value !== originalCellValue) {
+      cell.classList.add('dirty');
+      cell.title = '已修改，未保存';
+      vscode.postMessage({ type: 'dirtyChange', dirty: true });
+    }
     vscode.postMessage({ type: 'editCell', row: coords.row, col: coords.col, value: value });
     cell.removeAttribute('contenteditable');
     cell.classList.remove('editing');
@@ -1767,6 +1974,8 @@ table.addEventListener('dblclick', e => {
     e.stopPropagation();
     return;
   }
+  // 005-G1: browse 模式禁编辑
+  if (currentMode === 'browse') return;
   const edgeTarget = getCellTarget(e.target);
   const edge = getResizeEdgeInfo(edgeTarget, e);
   if (edge) {
@@ -1825,6 +2034,55 @@ window.addEventListener('message', event => {
       try { anchorCell.focus({ preventScroll: true }); } catch { try { anchorCell.focus(); } catch {} }
     } else {
       try { document.body.focus({ preventScroll: true }); } catch { try { document.body.focus(); } catch {} }
+    }
+  } else if (message.type === 'statusUpdate' || message.type === 'dirtyChange') {
+    // 003-F4/F5: 状态信息透传 / 修改标记（已通过 provider 处理）
+    if (message.mode) {
+      currentMode = message.mode;
+      document.body.classList.add(`csv-mode-${currentMode}`);
+      document.body.classList.remove('csv-mode-browse', 'csv-mode-edit', 'csv-mode-analyze');
+      document.body.classList.add(`csv-mode-${currentMode}`);
+    }
+    return;
+  } else if (message.type === 'modeChange') {
+    // 005-G1: 命令面板触发的模式切换
+    currentMode = message.mode || 'edit';
+    document.body.classList.remove('csv-mode-browse', 'csv-mode-edit', 'csv-mode-analyze');
+    document.body.classList.add(`csv-mode-${currentMode}`);
+    return;
+  } else if (message.type === 'documentSaved') {
+    // 003-P0: 文档保存后清所有 dirty 标记
+    document.querySelectorAll('td.dirty, th.dirty').forEach(c => {
+      c.classList.remove('dirty');
+      c.removeAttribute('title');
+    });
+    vscode.postMessage({ type: 'dirtyChange', dirty: false });
+    return;
+  // 003-F8: 键盘可达性 — 来自命令面板/快捷键的请求
+  } else if (message.type === 'requestEditActiveCell') {
+    if (anchorCell && !editingCell) editCell(anchorCell, null, 'detail');
+  } else if (message.type === 'requestSelectCurrentColumn') {
+    if (anchorCell) {
+      const col = anchorCell.getAttribute('data-col');
+      if (col !== null && col !== '-1') selectFullColumnRange(parseInt(col, 10), parseInt(col, 10));
+    }
+  } else if (message.type === 'requestDeleteActiveCell') {
+    if (anchorCell && !editingCell) {
+      const coords = getCellCoords(anchorCell);
+      vscode.postMessage({ type: 'editCell', row: coords.row, col: coords.col, value: '' });
+    }
+  } else if (message.type === 'requestGotoRow') {
+    const target = Math.max(1, parseInt(message.row, 10) || 1);
+    const sel = `td[data-row="${target}"][data-col]:not([data-col="-1"])`;
+    const cell = table.querySelector(sel);
+    if (cell) {
+      clearSelection();
+      cell.classList.add('selected');
+      currentSelection.push(cell);
+      anchorCell = cell; rangeEndCell = cell;
+      try { cell.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+      try { cell.focus({ preventScroll: true }); } catch {}
+      persistState();
     }
   } else if (message.type === 'chunkData') {
     const requestId = Number(message.requestId);

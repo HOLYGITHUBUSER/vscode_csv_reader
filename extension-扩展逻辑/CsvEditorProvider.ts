@@ -2,6 +2,8 @@ import Papa from 'papaparse';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { CsvDocument } from './csvDocument';
+import { CsvStatusBar } from './csvStatusBar';
+import { getModeForUri } from './csvMode';
 import {
   escapeCss,
   escapeHtml,
@@ -62,6 +64,7 @@ class CsvEditorController {
   private isSaving = false;
   private currentWebviewPanel: vscode.WebviewPanel | undefined;
   private document!: CsvDocument;
+  private statusBar: CsvStatusBar | undefined;
   private separatorCache: { version: number; configKey: string; separator: string } | undefined;
   private isDiffContext = false;
   private chunkRenderState: ChunkRenderState | undefined;
@@ -123,6 +126,12 @@ class CsvEditorController {
         }
         e.webviewPanel.webview.postMessage({ type: 'focus' });
         CsvEditorProvider.currentActive = this;
+        vscode.commands.executeCommand('setContext', 'csvActive', true);
+      } else {
+        // Last active loses focus
+        if (CsvEditorProvider.currentActive === this) {
+          vscode.commands.executeCommand('setContext', 'csvActive', false);
+        }
       }
     });
 
@@ -171,6 +180,15 @@ class CsvEditorController {
         case 'deleteColumn':
           await this.deleteColumn(e.index);
           break;
+        case 'hideColumn': {
+          // 003-F1: 隐藏列 = 加 hiddenColumnsForUri 状态 + refresh
+          const hidden = CsvEditorProvider.getHiddenColumnsForUri(this.context, this.document.uri);
+          if (!hidden.includes(e.col)) {
+            await CsvEditorProvider.setHiddenColumnsForUri(this.context, this.document.uri, [...hidden, e.col]);
+            this.refresh();
+          }
+          break;
+        }
         case 'deleteColumns':
           await this.deleteColumns(e.indices);
           break;
@@ -212,6 +230,24 @@ class CsvEditorController {
           await cfg.update('rowHeightMode', mode, vscode.ConfigurationTarget.Global);
           break;
         }
+        case 'statusUpdate': {
+          // 003-F4: 来自 webview 的状态汇报
+          if (!this.statusBar) this.statusBar = new CsvStatusBar();
+          if (e.stats) this.statusBar.setStats(e.stats.rows, e.stats.cols);
+          if (e.selection) this.statusBar.setSelection(e.selection.row, e.selection.col);
+          if (e.separator) this.statusBar.setSeparator(e.separator);
+          if (e.encoding) this.statusBar.setEncoding(e.encoding);
+          if (e.sort) this.statusBar.setSort(e.sort.col, e.sort.asc);
+          if (e.filter) this.statusBar.setFilter(e.filter.matched, e.filter.total);
+          if (e.mode) this.statusBar.setMode(e.mode);
+          break;
+        }
+        case 'dirtyChange': {
+          // 003-F5: 单元格修改标记
+          if (!this.statusBar) this.statusBar = new CsvStatusBar();
+          this.statusBar.setDirty(!!e.dirty);
+          break;
+        }
       }
     });
 
@@ -245,6 +281,11 @@ class CsvEditorController {
       changeDocumentSubscription.dispose();
       for (const d of watcherSubs) { try { d.dispose(); } catch {} }
       CsvEditorProvider.editors = CsvEditorProvider.editors.filter(ed => ed !== this);
+      if (CsvEditorProvider.currentActive === this) {
+        CsvEditorProvider.currentActive = undefined;
+        vscode.commands.executeCommand('setContext', 'csvActive', false);
+      }
+      if (this.statusBar) { this.statusBar.dispose(); this.statusBar = undefined; }
       this.currentWebviewPanel = undefined;
     });
   }
@@ -303,19 +344,13 @@ class CsvEditorController {
     }
 
     const fileLabel = path.basename(this.document.uri.fsPath || this.document.uri.path || this.document.uri.toString());
+    // 003-F3: 非阻塞大文件提示。modal=false 允许用户继续操作，
+    // 默认 5 秒后自动 dismiss（showInformationMessage 不阻塞 webview 加载）。
     const selected = await vscode.window.showWarningMessage(
-      `CSV: "${fileLabel}" is ${this.formatSizeMb(sizeBytes)} MB and exceeds the csv.maxFileSizeMB limit (${maxFileSizeMB} MB).`,
-      {
-        modal: true,
-        detail: 'Opening large files in CSV view can be slow and block the editor.'
-      },
-      CsvEditorController.LARGE_FILE_CONTINUE_THIS_TIME,
+      `CSV: "${fileLabel}" is ${this.formatSizeMb(sizeBytes)} MB and exceeds the csv.maxFileSizeMB limit (${maxFileSizeMB} MB). Loading anyway — may be slow.`,
       CsvEditorController.LARGE_FILE_IGNORE_FOREVER
     );
 
-    if (selected === CsvEditorController.LARGE_FILE_CONTINUE_THIS_TIME) {
-      return true;
-    }
     if (selected === CsvEditorController.LARGE_FILE_IGNORE_FOREVER) {
       await vscode.workspace
         .getConfiguration('csv')
@@ -430,6 +465,11 @@ class CsvEditorController {
 
   public getCurrentSeparator(): string {
     return this.getSeparator();
+  }
+
+  /** 003-F8: 向活跃 webview 投递消息（供命令面板/快捷键使用） */
+  public postMessageToWebview(message: unknown): void {
+    this.currentWebviewPanel?.webview.postMessage(message);
   }
 
   // ───────────── Document Editing Methods ─────────────
@@ -933,11 +973,14 @@ class CsvEditorController {
     try {
       await vscode.commands.executeCommand('workbench.action.files.save');
       console.log('CSV: Document save requested');
+      // 003-P0: 通知 webview 清掉所有 dirty 标记
+      this.currentWebviewPanel?.webview.postMessage({ type: 'documentSaved' });
     } catch (error) {
       console.error('CSV: Error saving document', error);
       try {
         await this.document.save();
         console.log('CSV: Direct save fallback succeeded');
+        this.currentWebviewPanel?.webview.postMessage({ type: 'documentSaved' });
       } catch (err2) {
         console.error('CSV: Direct save fallback failed', err2);
       }
@@ -1379,6 +1422,15 @@ class CsvEditorController {
       columnLabels,
       columnFilters: this.filterSortState.columnFilters,
       globalSearch: this.filterSortState.globalSearch
+    });
+
+    // 003-F4: webview 加载后发 status 基础数据
+    this.currentWebviewPanel.webview.postMessage({
+      type: 'statusUpdate',
+      stats: { rows: data.length, cols: data[0]?.length || 0 },
+      separator: separator === '\t' ? '\\t' : separator,
+      encoding: this.document.encoding || 'utf-8',
+      mode: getModeForUri(this.context, this.document.uri)
     });
   }
 
@@ -2055,6 +2107,7 @@ export class CsvEditorProvider implements vscode.CustomEditorProvider<CsvDocumen
   public static editors: CsvEditorController[] = [];
   public static currentActive: CsvEditorController | undefined;
   public static readonly hiddenRowsKey = 'csv.hiddenRows';
+  public static readonly hiddenColsKey = 'csv.hiddenColumnsByUri';
   public static readonly headerKey     = 'csv.headerByUri';
   public static readonly serialKey     = 'csv.serialIndexByUri';
   public static readonly sepKey        = 'csv.separatorByUri';
@@ -2212,6 +2265,17 @@ export class CsvEditorProvider implements vscode.CustomEditorProvider<CsvDocumen
     const map = { ...(context.workspaceState.get<Record<string, string>>(CsvEditorProvider.sepKey, {})) };
     if (!sep || sep.length === 0) { delete map[uri.toString()]; } else { map[uri.toString()] = sep; }
     await context.workspaceState.update(CsvEditorProvider.sepKey, map);
+  }
+
+  public static getHiddenColumnsForUri(context: vscode.ExtensionContext, uri: vscode.Uri): number[] {
+    const map = context.workspaceState.get<Record<string, number[]>>(CsvEditorProvider.hiddenColsKey, {});
+    return map[uri.toString()] || [];
+  }
+
+  public static async setHiddenColumnsForUri(context: vscode.ExtensionContext, uri: vscode.Uri, cols: number[]): Promise<void> {
+    const map = { ...(context.workspaceState.get<Record<string, number[]>>(CsvEditorProvider.hiddenColsKey, {})) };
+    map[uri.toString()] = cols;
+    await context.workspaceState.update(CsvEditorProvider.hiddenColsKey, map);
   }
 
   // Test helpers to access internal utilities without VS Code runtime

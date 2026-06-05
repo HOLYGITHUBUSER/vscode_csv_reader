@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { CsvEditorProvider } from './CsvEditorProvider';
+import { CsvMode, getModeForUri, setModeForUri, nextMode, modeLabel } from './csvMode';
+import { exportCurrentViewAsJson, exportCurrentViewAsXlsx } from './csvExportCommands';
 
 function displaySeparator(separator: string): string {
   return separator === '\t' ? '\\t' : separator;
@@ -200,6 +202,58 @@ export function registerCsvCommands(context: vscode.ExtensionContext) {
       const label = nextMode === 'compact' ? '紧凑' : '自然折行';
       vscode.window.showInformationMessage(`CSV: 行高模式已切换为 ${label}`);
       CsvEditorProvider.editors.forEach(ed => ed.refresh());
+    }),
+    // 003-F8: 键盘可达性 — 编辑 / 跳行 / 选列 / 清空
+    vscode.commands.registerCommand('csv.editActiveCell', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) return;
+      active.postMessageToWebview({ type: 'requestEditActiveCell' });
+    }),
+    vscode.commands.registerCommand('csv.gotoRow', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) return;
+      const input = await vscode.window.showInputBox({
+        prompt: '跳转到行号（1 = 第一数据行）',
+        placeHolder: '行号',
+        validateInput: v => /^\d+$/.test(v) ? null : '请输入正整数'
+      });
+      if (input) active.postMessageToWebview({ type: 'requestGotoRow', row: parseInt(input, 10) });
+    }),
+    vscode.commands.registerCommand('csv.selectColumn', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) return;
+      active.postMessageToWebview({ type: 'requestSelectCurrentColumn' });
+    }),
+    vscode.commands.registerCommand('csv.deleteActiveCell', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) return;
+      active.postMessageToWebview({ type: 'requestDeleteActiveCell' });
+    }),
+    // 005-G1: 模式切换
+    vscode.commands.registerCommand('csv.toggleMode', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) {
+        vscode.window.showInformationMessage('CSV: 请先打开一个 CSV/TSV 文件。');
+        return;
+      }
+      const uri = active.getDocumentUri();
+      const cur = getModeForUri(context, uri);
+      const next = nextMode(cur);
+      await setModeForUri(context, uri, next);
+      vscode.window.showInformationMessage(`CSV: 模式切换为 ${modeLabel(next)}`);
+      active.postMessageToWebview({ type: 'modeChange', mode: next });
+      active.refresh();
+    }),
+    // 005-G4/G5: 导出
+    vscode.commands.registerCommand('csv.exportJson', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) { vscode.window.showInformationMessage('CSV: 请先打开一个 CSV/TSV 文件。'); return; }
+      await exportCurrentViewAsJson(active);
+    }),
+    vscode.commands.registerCommand('csv.exportXlsx', async () => {
+      const active = CsvEditorProvider.getActiveProvider();
+      if (!active) { vscode.window.showInformationMessage('CSV: 请先打开一个 CSV/TSV 文件。'); return; }
+      await exportCurrentViewAsXlsx(active);
     })
   );
 }

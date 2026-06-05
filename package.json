@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/jonaraphael/csv.git"
   },
-  "version": "1.4.0",
+  "version": "1.5.0",
   "engines": {
     "vscode": "^1.70.0",
     "node": ">=14"
@@ -100,6 +100,26 @@
       {
         "command": "csv.toggleRowHeightMode",
         "title": "CSV_CUSTOM_PRO: 切换行高模式（紧凑/自然折行）"
+      },
+      {
+        "command": "csv.editActiveCell",
+        "title": "CSV_CUSTOM_PRO: 编辑当前单元格"
+      },
+      {
+        "command": "csv.gotoRow",
+        "title": "CSV_CUSTOM_PRO: 跳转到指定行"
+      },
+      {
+        "command": "csv.selectColumn",
+        "title": "CSV_CUSTOM_PRO: 选中当前列"
+      },
+      {
+        "command": "csv.deleteActiveCell",
+        "title": "CSV_CUSTOM_PRO: 清空当前单元格"
+      },
+      {
+        "command": "csv.toggleMode",
+        "title": "CSV_CUSTOM_PRO: 切换模式（浏览/编辑/分析）"
       }
     ],
     "configuration": {
@@ -238,6 +258,41 @@
             "filenamePattern": "*.psv"
           }
         ]
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "csv.editActiveCell",
+        "key": "f2",
+        "when": "csvActive"
+      },
+      {
+        "command": "csv.gotoRow",
+        "key": "ctrl+g",
+        "mac": "cmd+g",
+        "when": "csvActive"
+      },
+      {
+        "command": "csv.selectColumn",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "csvActive"
+      },
+      {
+        "command": "csv.deleteActiveCell",
+        "key": "delete",
+        "when": "csvActive && !editorFocus && !inputFocus"
+      },
+      {
+        "command": "csv.deleteActiveCell",
+        "key": "backspace",
+        "when": "csvActive && !editorFocus && !inputFocus"
+      },
+      {
+        "command": "csv.toggleMode",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "csvActive"
       }
     ]
   },
