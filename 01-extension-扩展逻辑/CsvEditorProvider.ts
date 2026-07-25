@@ -1511,7 +1511,8 @@ class CsvEditorController {
       th, td { padding: ${cellPadding}px 8px; border: 1px solid ${isDark ? '#555' : '#ccc'}; font-size: inherit; vertical-align: top; }
       th { background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; position: sticky; top: 0; z-index: 3; }
       td { overflow: hidden; }
-      td[data-full-text], th[data-full-text] { cursor: help; }
+      /* full-text preview is hover-based; do not use cursor:help (looks like "?") */
+      td[data-full-text], th[data-full-text] { cursor: inherit; }
       #csvCellPreview {
         position: fixed;
         z-index: 1300;

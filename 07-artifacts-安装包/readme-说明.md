@@ -18,22 +18,19 @@ python3 03-script-构建脚本/build-编译打包.py --bump
 npm run package
 ```
 
-## 产物命名
+## 产物
 
 | 文件 | 含义 |
 | --- | --- |
-| `csv-custom-pro-v1.4.0-20260725-145530.vsix` | **时间戳包**（版本 + 日期 + 时间） |
-| `csv-custom-pro-latest.vsix` | 稳定别名，始终等于最近一次打包 |
+| `csv-custom-pro-v1.4.0-YYYYMMDD-HHmmss.vsix` | **唯一保留的安装包**（版本 + 时间戳） |
 | `build-info-构建信息.md` | 版本 / commit / sha256（自动生成） |
 
-格式：`{扩展名}-v{版本}-{YYYYMMDD}-{HHmmss}.vsix`
+每次打包后会自动删掉旧的 `*.vsix`，只留最新 1 个。
 
 ## 安装
 
 ```bash
-cursor --install-extension 07-artifacts-安装包/csv-custom-pro-latest.vsix --force
-# 或指定某次时间戳包
-# cursor --install-extension 07-artifacts-安装包/csv-custom-pro-v1.4.0-….vsix --force
+cursor --install-extension 07-artifacts-安装包/csv-custom-pro-v1.4.0-….vsix --force
 ```
 
 安装后：`Developer: Reload Window`。

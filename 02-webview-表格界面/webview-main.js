@@ -1021,30 +1021,49 @@ const getRowDropTarget = clientY => {
   return { beforeIndex, indicatorY };
 };
 const getResizeEdgeInfo = (target, e) => {
-  if (!target) return null;
-  if (isColumnHeaderCell(target)) {
-    const col = parseInt(target.getAttribute('data-col') || 'NaN', 10);
-    if (!Number.isNaN(col)) {
-      const rect = target.getBoundingClientRect();
-      const edgeDelta = rect.right - e.clientX;
-      if (edgeDelta >= 0 && edgeDelta <= RESIZE_HANDLE_PX) {
-        return { axis: 'column', index: col, rect };
+  if (!target || !target.getAttribute) return null;
+  const col = parseInt(target.getAttribute('data-col') || 'NaN', 10);
+  const row = parseInt(target.getAttribute('data-row') || 'NaN', 10);
+  const rect = target.getBoundingClientRect();
+  // Collect edge hits; pick the closest edge so bottom-left corner prefers
+  // row-resize over the previous-column left-edge hit (important for tests & UX).
+  const hits = [];
+
+  // Column-resize: right edge of ANY data/header cell (not serial col -1).
+  // Left edge of next cell also targets the previous column (between-cells drag).
+  if (!Number.isNaN(col) && col >= 0) {
+    const nearRight = rect.right - e.clientX;
+    if (nearRight >= 0 && nearRight <= RESIZE_HANDLE_PX) {
+      hits.push({ axis: 'column', index: col, rect, dist: nearRight });
+    }
+    const nearLeft = e.clientX - rect.left;
+    if (nearLeft >= 0 && nearLeft <= RESIZE_HANDLE_PX && col > 0) {
+      const prev = target.parentElement
+        ? target.parentElement.querySelector(`[data-col="${col - 1}"]`)
+        : null;
+      if (prev) {
+        hits.push({
+          axis: 'column',
+          index: col - 1,
+          rect: prev.getBoundingClientRect(),
+          dist: nearLeft,
+        });
       }
     }
   }
-  // Row-resize: any cell with a numeric data-row (serial or data) triggers when near its bottom.
-  const rowAttr = target && target.getAttribute ? target.getAttribute('data-row') : null;
-  if (rowAttr !== null) {
-    const row = parseInt(rowAttr, 10);
-    if (!Number.isNaN(row) && row >= 0) {
-      const rect = target.getBoundingClientRect();
-      const edgeDelta = rect.bottom - e.clientY;
-      if (edgeDelta >= 0 && edgeDelta <= RESIZE_HANDLE_PX) {
-        return { axis: 'row', index: row, rect };
-      }
+
+  // Row-resize: bottom edge of any cell with a numeric data-row.
+  if (!Number.isNaN(row) && row >= 0) {
+    const nearBottom = rect.bottom - e.clientY;
+    if (nearBottom >= 0 && nearBottom <= RESIZE_HANDLE_PX) {
+      hits.push({ axis: 'row', index: row, rect, dist: nearBottom });
     }
   }
-  return null;
+
+  if (!hits.length) return null;
+  hits.sort((a, b) => a.dist - b.dist);
+  const best = hits[0];
+  return { axis: best.axis, index: best.index, rect: best.rect };
 };
 const applyColumnWidth = (col, widthPx) => {
   const width = Math.max(40, Math.round(widthPx));
@@ -1339,12 +1358,10 @@ table.addEventListener('mousedown', e => {
     const tColAttr = target.getAttribute('data-col');
     // Ensure both have coordinates of some form
     if (aRowAttr !== null && tRowAttr !== null) {
-      // Case 1: Header-to-header shift click → full column range
+      // Case 1: Header-to-header shift click → select header cells only (for easy title copy)
       if (anchorCell.tagName === 'TH' && target.tagName === 'TH' && aColAttr !== null && tColAttr !== null) {
         e.preventDefault();
-        const startCol = parseInt(aColAttr, 10);
-        const endCol = parseInt(tColAttr, 10);
-        selectFullColumnRange(startCol, endCol);
+        selectRange(getCellCoords(anchorCell), getCellCoords(target));
         rangeEndCell = target;
         anchorCell.focus();
         return;
@@ -1391,7 +1408,9 @@ table.addEventListener('mousedown', e => {
   }
   /* ──────── END NEW BLOCK ──────── */
   
-  selectionMode = isColumnHeaderCell(target) ? "column" : (target.getAttribute('data-col') === '-1' ? "row" : "cell");
+  // Column headers select as normal cells (title only) so Cmd/Ctrl+C copies the header text.
+  // Full-column select was rarely useful here; row-index still selects the whole row.
+  selectionMode = target.getAttribute('data-col') === '-1' ? "row" : "cell";
   startCell = target; endCell = target; rangeEndCell = target; isSelecting = true; e.preventDefault();
   target.focus();
 });

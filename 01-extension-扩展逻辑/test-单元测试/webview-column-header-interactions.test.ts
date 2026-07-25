@@ -30,23 +30,24 @@ describe('Webview column header interactions', () => {
     h.fireMouse('mouseup', header, { clientX: 4, clientY: 4, ...opts });
   };
 
-  it('single-clicking a column header selects the whole column', () => {
+  it('single-clicking a column header selects only that title cell', () => {
     clickHeader(1);
 
     assert.ok(h.getHeader(1)!.classList.contains('selected'));
-    assert.ok(h.getCell(1, 1)!.classList.contains('selected'));
-    assert.ok(h.getCell(2, 1)!.classList.contains('selected'));
+    assert.ok(!h.getCell(1, 1)!.classList.contains('selected'));
+    assert.ok(!h.getCell(2, 1)!.classList.contains('selected'));
+    assert.ok(!h.getHeader(0)!.classList.contains('selected'));
     assert.ok(!h.getCell(1, 0)!.classList.contains('selected'));
   });
 
-  it('shift-clicking another header extends to a column range', () => {
+  it('shift-clicking another header extends across header titles only', () => {
     clickHeader(0);
     clickHeader(2, { shiftKey: true });
 
     for (const col of [0, 1, 2]) {
       assert.ok(h.getHeader(col)!.classList.contains('selected'), `header ${col} should be selected`);
-      assert.ok(h.getCell(1, col)!.classList.contains('selected'), `row 1 col ${col} should be selected`);
-      assert.ok(h.getCell(2, col)!.classList.contains('selected'), `row 2 col ${col} should be selected`);
+      assert.ok(!h.getCell(1, col)!.classList.contains('selected'), `row 1 col ${col} should not be selected`);
+      assert.ok(!h.getCell(2, col)!.classList.contains('selected'), `row 2 col ${col} should not be selected`);
     }
   });
 

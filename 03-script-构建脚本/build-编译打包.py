@@ -10,10 +10,9 @@
     python3 03-script-构建脚本/build-编译打包.py --bump
         # 先把 package.json 的 PATCH 版本 +1，再编译打包
 
-产物命名（清晰 + 时间戳）：
+产物命名（仅保留 1 个最新包）：
 
     csv-custom-pro-v1.4.0-20260725-145530.vsix
-    csv-custom-pro-latest.vsix          # 稳定别名，始终指向本次包
     build-info-构建信息.md              # 元信息
 """
 
@@ -23,7 +22,6 @@ import argparse
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -38,7 +36,7 @@ SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 STAMPED_RE = re.compile(
     r"^.+-v\d+\.\d+\.\d+-\d{8}-\d{6}\.vsix$"
 )
-KEEP_TIMESTAMPED = 5  # 本地保留最近 N 个带时间戳包
+KEEP_TIMESTAMPED = 1  # 默认只保留最新 1 个带时间戳包
 
 
 def run(cmd: list[str], *, cwd: Path = ROOT) -> None:
@@ -113,19 +111,16 @@ def main() -> None:
     now = datetime.now()
     stamp_file = now.strftime("%Y%m%d-%H%M%S")  # 20260725-145530
     stamp_human = now.strftime("%Y-%m-%d %H:%M:%S")
-    # 清晰格式：{name}-v{version}-{YYYYMMDD}-{HHmmss}.vsix
+    # 清晰格式：{name}-v{version}-{YYYYMMDD}-{HHmmss}.vsix（仅此一个包）
     stamped_name = f"{name}-v{version}-{stamp_file}.vsix"
-    latest_name = f"{name}-latest.vsix"
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stamped_path = OUT_DIR / stamped_name
-    latest_path = OUT_DIR / latest_name
     info_path = OUT_DIR / "build-info-构建信息.md"
 
     run([str(vsce), "package", "-o", str(stamped_path)], cwd=ROOT)
-    shutil.copy2(stamped_path, latest_path)
 
-    # 3) 清理旧时间戳包 + 根目录误放的 vsix
+    # 3) 清理旧时间戳包 / 旧 latest 别名 / 根目录误放的 vsix
     stamped = sorted(
         [p for p in OUT_DIR.iterdir() if p.is_file() and STAMPED_RE.match(p.name)],
         key=lambda p: p.stat().st_mtime,
@@ -141,6 +136,10 @@ def main() -> None:
         if p.is_file() and legacy_re.match(p.name) and p.name != stamped_name:
             p.unlink(missing_ok=True)
             pruned.append(p.name)
+    # 不再保留 *-latest.vsix 别名
+    for p in OUT_DIR.glob(f"{name}-latest.vsix"):
+        p.unlink(missing_ok=True)
+        pruned.append(p.name)
     for p in ROOT.glob("*.vsix"):
         p.unlink(missing_ok=True)
         pruned.append(f"(root)/{p.name}")
@@ -164,17 +163,14 @@ def main() -> None:
 | 版本号 | `{version}` |
 | Git 分支 | `{branch or "(unknown)"}` |
 | Git 提交 | `{commit or "(unknown)"}`{" (工作区有未提交改动)" if dirty else ""} |
-| 时间戳产物 | [`{stamped_name}`]({stamped_name}) |
-| 稳定别名 | [`{latest_name}`]({latest_name}) |
+| 安装包 | [`{stamped_name}`]({stamped_name}) |
 | 文件大小 | {size} 字节（约 {size / 1024:.2f} KB） |
 | SHA-256 | `{sha256}` |
 
 ## 安装
 
 ```bash
-cursor --install-extension 07-artifacts-安装包/{latest_name} --force
-# 或指定本次时间戳包：
-# cursor --install-extension 07-artifacts-安装包/{stamped_name} --force
+cursor --install-extension 07-artifacts-安装包/{stamped_name} --force
 ```
 
 安装后：`Cmd/Ctrl+Shift+P` → `Developer: Reload Window`
@@ -183,8 +179,7 @@ cursor --install-extension 07-artifacts-安装包/{latest_name} --force
 
     print()
     print("=== 打包完成 ===")
-    print(f"时间戳包: {stamped_path}")
-    print(f"稳定别名: {latest_path}")
+    print(f"安装包: {stamped_path}")
     print(f"构建信息: {info_path}")
     if pruned:
         print(f"已清理旧包 {len(pruned)} 个:")
