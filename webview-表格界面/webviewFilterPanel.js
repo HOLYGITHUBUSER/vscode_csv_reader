@@ -219,6 +219,26 @@
     setSelectedColumn(selectedColumnIndex);
     return selectedColumnIndex;
   };
+
+  /** Load an existing column filter into the form for editing. */
+  const editColumnFilter = (colKey) => {
+    const col = String(colKey);
+    const condition = columnFilters[col];
+    if (!condition) return;
+    const idx = Number(col);
+    if (!Number.isInteger(idx) || idx < 0) return;
+    setSelectedColumn(idx);
+    if (columnModeSelect) columnModeSelect.value = condition.mode === 'equals' ? 'equals' : 'contains';
+    if (columnIgnoreCase) columnIgnoreCase.checked = condition.ignoreCase !== false;
+    if (columnIgnoreWhitespace) columnIgnoreWhitespace.checked = !!condition.ignoreWhitespace;
+    if (columnValueInput) {
+      columnValueInput.value = condition.value || '';
+      columnValueInput.focus();
+      columnValueInput.select();
+    }
+    closeColumnOptions();
+  };
+
   const renderColumnFilterChips = () => {
     if (!columnChips) return;
     columnChips.textContent = '';
@@ -227,8 +247,15 @@
     for (const [col, condition] of entries) {
       const chip = document.createElement('span');
       chip.className = 'csv-filter-chip';
+      chip.title = '点击编辑此过滤条件';
+      chip.style.cursor = 'pointer';
       const text = document.createElement('span');
       text.textContent = `${getColumnLabel(col)} ${describeCondition(condition)}: ${condition.value}`;
+      text.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        editColumnFilter(col);
+      });
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.title = '删除这个过滤条件并刷新';
@@ -416,6 +443,21 @@
       sendFilter(searchInput ? searchInput.value : '', true);
     });
   }
+
+  // When user focuses a data cell in the table, auto-select that column for filtering.
+  document.addEventListener('focusin', e => {
+    const target = e.target;
+    if (!target || typeof target.closest !== 'function') return;
+    // Ignore focus inside the filter panel itself
+    if (target.closest('#csvFloatPanel') || target.closest('#csvColumnFilterOptions')) return;
+    const cell = target.closest('td[data-col], th[data-col]');
+    if (!cell) return;
+    const col = parseInt(cell.getAttribute('data-col') || '', 10);
+    if (!Number.isInteger(col) || col < 0) return;
+    if (col === selectedColumnIndex) return;
+    setSelectedColumn(col);
+  }, true);
+
   window.addEventListener('csvFilterSortResult', e => {
     const detail = e.detail || {};
     if (Array.isArray(detail.columnLabels)) {
@@ -431,6 +473,12 @@
     renderColumnFilterChips();
     syncFilterStatus();
   });
+
+  window.CsvFilterPanelBridge = {
+    setColumn: (index) => setSelectedColumn(index),
+    editColumnFilter,
+  };
+
   renderColumnFilterChips();
   setSelectedColumn(selectedColumnIndex);
   syncFilterStatus();
