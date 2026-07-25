@@ -3,7 +3,7 @@
   "displayName": "CSV_CUSTOM_PRO",
   "publisher": "csv-custom-pro",
   "description": "无缝显示和编辑CSV文件，支持过滤/排序/搜索",
-  "icon": "icon.png",
+  "icon": "00-config-工程配置/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/HOLYGITHUBUSER/vscode_csv_reader.git"
@@ -47,7 +47,7 @@
           "PSV",
           "psv"
         ],
-        "configuration": "./language-语言配置.json"
+        "configuration": "./00-config-工程配置/language-语言配置.json"
       },
       {
         "id": "tsv",
@@ -61,7 +61,7 @@
           "TAB",
           "tab"
         ],
-        "configuration": "./language-语言配置.json"
+        "configuration": "./00-config-工程配置/language-语言配置.json"
       }
     ],
     "commands": [
@@ -242,7 +242,7 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./00-config-工程配置/tsconfig.json",
     "compile:bump": "python3 03-script-构建脚本/bump-version-版本递增.py",
     "package:force": "node 03-script-构建脚本/package-vsix-打包.cjs",
     "vscode:prepublish": "npm run compile",
@@ -269,5 +269,6 @@
     "jsdom": "^22.1.0",
     "typescript": "^4.4.3",
     "vscode": "^1.1.37"
-  }
+  },
+  "license": "MIT"
 }

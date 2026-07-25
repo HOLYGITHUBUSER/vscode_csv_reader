@@ -3,13 +3,13 @@
     "target": "ES2019",
     "module": "commonjs",
     "lib": ["es2019", "dom"],
-    "outDir": "./out",
+    "outDir": "../out",
+    "rootDir": "../01-extension-扩展逻辑",
     "strict": true,
     "esModuleInterop": true,
     "types": ["node", "vscode"],
     "skipLibCheck": true
   },
-	"include": ["./01-extension-扩展逻辑/**/*.ts"],
-	"exclude": ["node_modules"]
+  "include": ["../01-extension-扩展逻辑/**/*.ts"],
+  "exclude": ["../node_modules"]
 }
-  

@@ -5,6 +5,9 @@
     "99-backup-归档旧文件": true,
     ".cursor": true,
     ".github": true,
+    ".gitignore": true,
+    ".vscodeignore": true,
+    "package-lock.json": true,
     "**/.DS_Store": true,
     "05-e2e-浏览器测试/test-results": true,
     "05-e2e-浏览器测试/visual-review": true
@@ -13,8 +16,10 @@
     "**/node_modules": true,
     "out": true,
     "99-backup-归档旧文件": true,
+    "package-lock.json": true,
     "07-artifacts-安装包/**/*.vsix": true,
     "05-e2e-浏览器测试/test-results": true
   },
-  "typescript.tsc.autoDetect": "off"
+  "typescript.tsc.autoDetect": "off",
+  "typescript.tsdk": "node_modules/typescript/lib"
 }
