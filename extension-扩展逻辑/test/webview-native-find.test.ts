@@ -6,8 +6,8 @@ import path from 'path';
 describe('Webview custom find integration', () => {
   const extensionSource = fs.readFileSync(path.join(process.cwd(), 'extension-扩展逻辑', 'extension.ts'), 'utf8');
   const providerSource = fs.readFileSync(path.join(process.cwd(), 'extension-扩展逻辑', 'CsvEditorProvider.ts'), 'utf8');
-  const webviewScript = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'main.js'), 'utf8');
-  const findReplaceScript = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webviewFindReplace.js'), 'utf8');
+  const webviewScript = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webview-main.js'), 'utf8');
+  const findReplaceScript = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webview-find-replace.js'), 'utf8');
 
   it('does not enable native webview find widget', () => {
     assert.ok(!extensionSource.includes('enableFindWidget: true'));

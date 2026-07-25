@@ -8,7 +8,7 @@ describe('编码处理测试', () => {
   const testDir = path.join(process.cwd(), 'samples-试用样例');
 
   it('应该正确读取UTF-8编码的CSV文件', () => {
-    const csvPath = path.join(testDir, 'super_example.csv');
+    const csvPath = path.join(testDir, 'super-中等样例.csv');
     const content = fs.readFileSync(csvPath, 'utf8');
     assert.ok(content.length > 0, 'UTF-8文件应该能正确读取');
 

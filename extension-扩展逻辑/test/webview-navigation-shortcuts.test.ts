@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Webview navigation shortcuts', () => {
-  const webviewScript = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'main.js'), 'utf8');
+  const webviewScript = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webview-main.js'), 'utf8');
 
   it('does not hijack Ctrl/Cmd+PageUp or Ctrl/Cmd+PageDown', () => {
     assert.ok(!webviewScript.includes("'Home','End','PageUp','PageDown'"));

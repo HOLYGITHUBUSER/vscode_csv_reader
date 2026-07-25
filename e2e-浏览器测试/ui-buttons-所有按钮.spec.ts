@@ -1,7 +1,7 @@
 /**
  * E2E: 验证页面上所有按钮和交互元素都能正常工作。
  *
- * 使用harness加载真实main.js到Chromium，逐个点击每个按钮，
+ * 使用harness加载真实webview-main.js到Chromium，逐个点击每个按钮，
  * 验证：(1) 按钮可见 (2) 点击无报错 (3) 发出正确的postMessage
  */
 import { test, expect } from '@playwright/test';

@@ -1,10 +1,10 @@
 /**
  * Webview 交互测试脚手架（headless jsdom 版）
  *
- * 现有 webview-*.test.ts 大多是对 `main.js` 源串做 grep 断言——
+ * 现有 webview-*.test.ts 大多是对 `webview-main.js` 源串做 grep 断言——
  * 那种写法不能复现「点了按钮没反应 / 拖了行没变高」这类真实交互 bug。
  *
- * 本模块把 `webview-表格界面/main.js` 真正加载进一个 jsdom 环境，
+ * 本模块把 `webview-表格界面/webview-main.js` 真正加载进一个 jsdom 环境，
  * 构造 CsvEditorProvider 渲染出的等价 DOM，暴露简单的合成鼠标事件 API，
  * 并捕获 `vscode.postMessage` 的全部调用，便于断言。
  */
@@ -66,7 +66,7 @@ export interface Harness {
 
 /**
  * 生成一段和 CsvEditorProvider.updateWebviewContent 输出在结构上等价的 HTML。
- * 不会包含编辑/菜单/FindReplace 等无关模块（main.js 里那些模块在没有相应 DOM 时走早退逻辑）。
+ * 不会包含编辑/菜单/FindReplace 等无关模块（webview-main.js 里那些模块在没有相应 DOM 时走早退逻辑）。
  */
 function buildHtml(cfg: HarnessConfig): string {
   const cols = cfg.columns;
@@ -129,7 +129,7 @@ function buildHtml(cfg: HarnessConfig): string {
 <script id="__csvColumnFilters" type="application/json">{}</script>
 <div id="contextMenu" style="display:none"></div>
 
-<!-- Floating filter / rowHeight panel（main.js 启动时会 querySelector 它们） -->
+<!-- Floating filter / rowHeight panel（webview-main.js 启动时会 querySelector 它们） -->
 <div id="csvFloatPanel">
   <span id="csvFilterStatus"></span>
   <div class="csv-column-combobox">
@@ -149,7 +149,7 @@ function buildHtml(cfg: HarnessConfig): string {
   <button id="csvRowHeightToggle" type="button" data-mode="${rowMode}"></button>
 </div>
 
-<!-- Minimal find-replace DOM so main.js's top-level event bindings don't crash -->
+<!-- Minimal find-replace DOM so webview-main.js's top-level event bindings don't crash -->
 <div id="findReplaceWidget" class="replace-collapsed" style="display:none">
   <div id="replaceToggleGutter">
     <button id="replaceToggle" type="button" aria-expanded="false">›</button>
@@ -175,11 +175,11 @@ function buildHtml(cfg: HarnessConfig): string {
 }
 
 export function createHarness(cfg: HarnessConfig): Harness {
-  const mainJsPath = path.join(process.cwd(), 'webview-表格界面', 'main.js');
+  const mainJsPath = path.join(process.cwd(), 'webview-表格界面', 'webview-main.js');
   const mainJs = fs.readFileSync(mainJsPath, 'utf8');
-  const findReplaceJsPath = path.join(process.cwd(), 'webview-表格界面', 'webviewFindReplace.js');
+  const findReplaceJsPath = path.join(process.cwd(), 'webview-表格界面', 'webview-find-replace.js');
   const findReplaceJs = fs.readFileSync(findReplaceJsPath, 'utf8');
-  const filterPanelJsPath = path.join(process.cwd(), 'webview-表格界面', 'webviewFilterPanel.js');
+  const filterPanelJsPath = path.join(process.cwd(), 'webview-表格界面', 'webview-filter-panel.js');
   const filterPanelJs = fs.readFileSync(filterPanelJsPath, 'utf8');
 
   const html = buildHtml(cfg);
@@ -191,7 +191,7 @@ export function createHarness(cfg: HarnessConfig): Harness {
 
   const { window } = dom;
 
-  // main.js 用 IntersectionObserver 做分块加载；我们测的是点击/拖动，给个 no-op。
+  // webview-main.js 用 IntersectionObserver 做分块加载；我们测的是点击/拖动，给个 no-op。
   if (typeof window.IntersectionObserver === 'undefined') {
     window.IntersectionObserver = class {
       observe() {}
@@ -233,7 +233,7 @@ export function createHarness(cfg: HarnessConfig): Harness {
     return origGBCR.call(el);
   };
 
-  // 捕获 postMessage，并在 window 上暴露 acquireVsCodeApi —— main.js 启动时会调用它。
+  // 捕获 postMessage，并在 window 上暴露 acquireVsCodeApi —— webview-main.js 启动时会调用它。
   const posted: PostedMessage[] = [];
   const state: { value: unknown } = { value: undefined };
   (window as any).acquireVsCodeApi = () => ({
@@ -242,7 +242,7 @@ export function createHarness(cfg: HarnessConfig): Harness {
     setState: (v: unknown) => { state.value = v; },
   });
 
-  // 把 main.js 以脚本形式注入（相当于 <script>…</script>）。
+  // 把 webview-main.js 以脚本形式注入（相当于 <script>…</script>）。
   const findReplaceScript = new window.Function(findReplaceJs);
   findReplaceScript.call(window);
   const script = new window.Function(mainJs);

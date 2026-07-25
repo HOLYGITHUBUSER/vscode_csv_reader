@@ -1,7 +1,7 @@
 /**
  * Playwright harness: assembles a self-contained HTML page that mirrors the
  * DOM structure `CsvEditorProvider.updateWebviewContent` emits, then inlines
- * the real `webview-表格界面/main.js`. Loaded via `file://` — NO Node, NO jsdom,
+ * the real `webview-表格界面/webview-main.js`. Loaded via `file://` — NO Node, NO jsdom,
  * NO extension host. Clicks & drags are real Chromium events.
  */
 import fs from 'fs';
@@ -108,7 +108,7 @@ function buildDom(cfg: HarnessConfig): string {
 <script id="__csvColumnFilters" type="application/json">{}</script>
 <script id="__csvGlobalSearch" type="application/json">""</script>
 
-<!-- Context menu + Floating filter panel + Find widget (main.js's top-level
+<!-- Context menu + Floating filter panel + Find widget (webview-main.js's top-level
      querySelectors touch these; shipping empty stubs so init doesn't crash) -->
 <div id="contextMenu" style="display:none"></div>
 <!-- Mirrors CsvEditorProvider.updateWebviewContent()'s float panel markup
@@ -165,14 +165,14 @@ function buildDom(cfg: HarnessConfig): string {
  *   - installs the acquireVsCodeApi shim that records every postMessage into
  *     `window.__posted`
  *   - renders the DOM structure
- *   - inlines webview-表格界面/main.js so Chromium runs the same bytes the webview
+ *   - inlines webview-表格界面/webview-main.js so Chromium runs the same bytes the webview
  *     would run
  * Returns the file:// URL to load.
  */
 export function writeHarnessHtml(cfg: HarnessConfig): { url: string; dir: string } {
-  const mainJs = fs.readFileSync(path.join(REPO_ROOT, 'webview-表格界面', 'main.js'), 'utf8');
-  const findReplaceJs = fs.readFileSync(path.join(REPO_ROOT, 'webview-表格界面', 'webviewFindReplace.js'), 'utf8');
-  const filterPanelJs = fs.readFileSync(path.join(REPO_ROOT, 'webview-表格界面', 'webviewFilterPanel.js'), 'utf8');
+  const mainJs = fs.readFileSync(path.join(REPO_ROOT, 'webview-表格界面', 'webview-main.js'), 'utf8');
+  const findReplaceJs = fs.readFileSync(path.join(REPO_ROOT, 'webview-表格界面', 'webview-find-replace.js'), 'utf8');
+  const filterPanelJs = fs.readFileSync(path.join(REPO_ROOT, 'webview-表格界面', 'webview-filter-panel.js'), 'utf8');
 
   const shim = `
 <script>
@@ -185,7 +185,7 @@ export function writeHarnessHtml(cfg: HarnessConfig): { url: string; dir: string
       getState:    function ()    { return window.__state; },
     };
   };
-  // main.js uses IntersectionObserver for chunk loading; harmless noop.
+  // webview-main.js uses IntersectionObserver for chunk loading; harmless noop.
   if (typeof window.IntersectionObserver === 'undefined') {
     window.IntersectionObserver = class {
       observe() {} unobserve() {} disconnect() {} takeRecords() { return []; }

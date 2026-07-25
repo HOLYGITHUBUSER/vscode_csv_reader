@@ -1481,13 +1481,13 @@ class CsvEditorController {
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
     // Build script URI using file path for compatibility (older APIs may lack Uri.joinPath)
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-表格界面', 'main.js'))
+      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-表格界面', 'webview-main.js'))
     );
     const findReplaceScriptUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-表格界面', 'webviewFindReplace.js'))
+      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-表格界面', 'webview-find-replace.js'))
     );
     const filterPanelScriptUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-表格界面', 'webviewFilterPanel.js'))
+      vscode.Uri.file(path.join(this.context.extensionPath, 'webview-表格界面', 'webview-filter-panel.js'))
     );
 
     // Safe separator transport (assumes single character; see assumptions)

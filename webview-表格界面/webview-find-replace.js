@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Floating find/replace widget.
  *
- * Exposes a small factory consumed by main.js so shared table state stays
+ * Exposes a small factory consumed by webview-main.js so shared table state stays
  * explicit instead of leaking through ad-hoc globals.
  * ------------------------------------------------------------------------ */
 (function initFindReplaceFactory() {

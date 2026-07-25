@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Webview size persistence', () => {
-  const source = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'main.js'), 'utf8');
+  const source = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webview-main.js'), 'utf8');
 
   it('persists column and row sizes in webview state', () => {
     assert.ok(source.includes('columnSizes: { ...columnSizeState }'));

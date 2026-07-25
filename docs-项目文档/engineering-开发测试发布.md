@@ -42,9 +42,9 @@ npx playwright install chromium
 - CSV 格式保真写回：`extension-扩展逻辑/csvFormat.ts`
 - 分隔符策略：`extension-扩展逻辑/csvSeparator.ts`
 - 表格 HTML/chunk 生成：`extension-扩展逻辑/csvRender.ts`
-- 主表格交互：`webview-表格界面/main.js`
-- 过滤面板：`webview-表格界面/webviewFilterPanel.js`
-- 查找替换：`webview-表格界面/webviewFindReplace.js`
+- 主表格交互：`webview-表格界面/webview-main.js`
+- 过滤面板：`webview-表格界面/webview-filter-panel.js`
+- 查找替换：`webview-表格界面/webview-find-replace.js`
 - jsdom 脚手架：`extension-扩展逻辑/test/helpers/webview-harness.ts`
 - E2E 脚手架：`e2e-浏览器测试/harness.ts`
 
@@ -90,7 +90,7 @@ npx playwright install chromium
 
 1. 运行 `npm run test:full`。
 2. 运行 `npm run install:cursor`，在 Cursor 里执行 `Developer: Reload Window`。
-3. 打开 `samples-试用样例/ultimate-50mb-完整压力测试.csv`。
+3. 打开 `samples-试用样例/stress-50mb-压力测试.csv`。
 4. 验证首屏打开、滚动加载、排序、列过滤、查找替换、单元格编辑。
 5. 如需验证 Windsurf，安装同一个 `artifacts-安装包/csv-custom-pro-latest.vsix` 后重载窗口。
 
@@ -138,8 +138,8 @@ Cmd/Ctrl+Shift+P -> Developer: Reload Window
 
 ## 提交前检查
 
-- 用户可见行为改动：更新 `产品设计-product.md` 的产品决策记录。
-- 架构/目录/模块职责改动：更新 `技术架构-architecture.md`。
+- 用户可见行为改动：更新 `product-产品设计.md` 的产品决策记录。
+- 架构/目录/模块职责改动：更新 `architecture-技术架构.md`。
 - 测试、打包、安装流程改动：更新本文。
 - 涉及 `webview-表格界面/` 或消息协议：至少跑 `npm test` 和 `npm run test:e2e`。
 - 打包前检查 `artifacts-安装包/BUILD-INFO.md` 文件大小，异常变大通常说明 `.vscodeignore` 漏排了内容。

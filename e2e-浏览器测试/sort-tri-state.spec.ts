@@ -48,9 +48,9 @@ test('sort-btn tri-state cycle in a real browser', async ({ page }) => {
 
   await page.goto(url);
 
-  // Sanity: page actually booted main.js with zero errors.
+  // Sanity: page actually booted webview-main.js with zero errors.
   await expect(page.locator('#csv-root')).toBeVisible();
-  expect(pageErrors, `main.js threw during init:\n${pageErrors.join('\n')}`).toEqual([]);
+  expect(pageErrors, `webview-main.js threw during init:\n${pageErrors.join('\n')}`).toEqual([]);
 
   const nameSortBtn = page.locator('th[data-col="0"] .sort-btn');
   await expect(nameSortBtn).toBeVisible();

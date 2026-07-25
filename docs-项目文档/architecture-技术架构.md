@@ -8,9 +8,9 @@
 vscode_csv_reader/
 ├─ extension-扩展逻辑/      扩展宿主 TypeScript + Node/jsdom 测试
 ├─ webview-表格界面/        webview 前端脚本（直接进 VSIX）
-├─ langConfig-语言配置/     CSV/TSV 语言贡献
+├─ lang-语言配置/     CSV/TSV 语言贡献
 ├─ icon-扩展图标/           扩展图标
-├─ docs-项目文档/           产品 / 架构 / 工程
+├─ docs-项目文档/           product / architecture / engineering / naming
 ├─ build-构建脚本/          版本号、打包、图标
 ├─ e2e-浏览器测试/          Playwright
 ├─ samples-试用样例/        手工试用 CSV（不进 VSIX）
@@ -20,7 +20,7 @@ vscode_csv_reader/
 └─ backup-归档旧文件/       本地归档（gitignore）
 ```
 
-命名约定：`功能英文-中文说明`（如 `extension-扩展逻辑`）。  
+命名范式见 [naming-命名规范.md](naming-命名规范.md)：顶层 `{en-kebab}-{中文}`，文档 `{en}-{中文}.md`。  
 产物约定：只认 `artifacts-安装包/csv-custom-pro-latest.vsix`，根目录不放 `.vsix`。
 
 ## 扩展侧模块
@@ -47,13 +47,13 @@ extension-扩展逻辑/
 
 ```text
 webview-表格界面/
-├─ main.js                  选区、编辑、粘贴、排序、虚拟滚动、缩放、全文预览
-├─ webviewFilterPanel.js    全局搜索、列过滤 combobox、行高
-└─ webviewFindReplace.js    查找替换
+├─ webview-main.js                  选区、编辑、粘贴、排序、虚拟滚动、缩放、全文预览
+├─ webview-filter-panel.js    全局搜索、列过滤 combobox、行高
+└─ webview-find-replace.js    查找替换
 ```
 
-加载顺序：`webviewFindReplace.js` → `main.js` → `webviewFilterPanel.js`。  
-`main.js` 暴露 `window.CsvWebviewBridge` 给过滤面板。
+加载顺序：`webview-find-replace.js` → `webview-main.js` → `webview-filter-panel.js`。  
+`webview-main.js` 暴露 `window.CsvWebviewBridge` 给过滤面板。
 
 ## Webview 与扩展通信
 
@@ -87,7 +87,7 @@ webview.postMessage({ type, ...payload })
 - 单元格 HTML 尽量瘦身；完整长文用 `data-full-text` + 可复制预览浮层，不用原生 title。
 - 大表（≥400 行）webview 侧使用**窗口虚拟滚动**：DOM 只保留视口附近行，`requestChunk` 按窗口拉取。
 - 过滤/排序后大结果走完整 `updateWebviewContent` 以保持虚拟滚动元数据一致。
-- 样例：日常 `smoke-日常验收.csv`；压测 `ultimate-50mb-完整压力测试.csv`。
+- 样例：日常 `smoke-日常验收.csv`；压测 `stress-50mb-压力测试.csv`。
 
 ## 状态持久化
 
@@ -112,7 +112,7 @@ Webview 侧状态：
 - `out/`
 - `webview-表格界面/`
 - `icon-扩展图标/icon.png`
-- `langConfig-语言配置/language-语言配置.json`
+- `lang-语言配置/language-语言配置.json`
 - `package.json`
 - `README.md`
 - `LICENSE`

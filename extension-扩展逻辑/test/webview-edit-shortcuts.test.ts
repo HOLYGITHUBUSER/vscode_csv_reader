@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Webview edit shortcuts', () => {
-  const webviewSource = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'main.js'), 'utf8');
+  const webviewSource = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webview-main.js'), 'utf8');
 
   it('supports Shift+Enter to insert newline while editing', () => {
     assert.ok(webviewSource.includes('const insertNewlineAtCaret = cell => {'));

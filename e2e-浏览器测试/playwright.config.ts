@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 
 /**
- * End-to-end tests that load the real `webview-表格界面/main.js` into Chromium,
+ * End-to-end tests that load the real `webview-表格界面/webview-main.js` into Chromium,
  * driven by actual mouse / keyboard events (not jsdom synthesis). Needed for
  * "did the click really hit the button" kind of regressions.
  */

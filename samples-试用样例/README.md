@@ -28,17 +28,17 @@
 
 | 文件 | 规模 | 用途 |
 | --- | --- | --- |
-| [`complex_test.csv`](complex_test.csv) | 很小 | 边界：多行单元格、中日德俄阿、emoji、公式注入串、HTML 等 |
-| [`super_example.csv`](super_example.csv) | ~1k 行 | 带 meta 头 + 多类型列，中等体量交互 |
-| [`ultimate-50mb-完整压力测试.csv`](ultimate-50mb-%E5%AE%8C%E6%95%B4%E5%8E%8B%E5%8A%9B%E6%B5%8B%E8%AF%95.csv) | ~50 MiB · 64 列 · 4 万行 | 大文件：分块加载、横向滚动、性能压测 |
+| [`complex-边界用例.csv`](complex-边界用例.csv) | 很小 | 边界：多行单元格、中日德俄阿、emoji、公式注入串、HTML 等 |
+| [`super-中等样例.csv`](super-中等样例.csv) | ~1k 行 | 带 meta 头 + 多类型列，中等体量交互 |
+| [`stress-50mb-压力测试.csv`](stress-50mb-压力测试.csv) | ~50 MiB · 64 列 · 4 万行 | 大文件：分块加载、横向滚动、性能压测 |
 
 ## 什么时候用哪个
 
 ```text
 日常改完烟测     → smoke-日常验收.csv
-边界字符/引号    → complex_test.csv
-中等数据交互     → super_example.csv
-大文件/性能      → ultimate-50mb-完整压力测试.csv
+边界字符/引号    → complex-边界用例.csv
+中等数据交互     → super-中等样例.csv
+大文件/性能      → stress-50mb-压力测试.csv
 ```
 
 > 本目录不作为 `npm test` 的断言基线；改 smoke 数据不影响自动测试。

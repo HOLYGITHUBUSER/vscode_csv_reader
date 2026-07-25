@@ -5,7 +5,7 @@ import path from 'path';
 
 describe('Webview zoom interactions', () => {
   const providerSource = fs.readFileSync(path.join(process.cwd(), 'extension-扩展逻辑', 'CsvEditorProvider.ts'), 'utf8');
-  const webviewSource = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'main.js'), 'utf8');
+  const webviewSource = fs.readFileSync(path.join(process.cwd(), 'webview-表格界面', 'webview-main.js'), 'utf8');
 
   it('passes zoom settings from provider to webview root dataset', () => {
     assert.ok(providerSource.includes('data-wheelzoomenabled="${mouseWheelZoomEnabled ? \'1\' : \'0\'}"'));

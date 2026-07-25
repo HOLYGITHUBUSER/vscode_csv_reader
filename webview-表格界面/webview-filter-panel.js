@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Floating panel: global filter input + column filters + row-height cycle.
  *
- * Depends on the small CsvWebviewBridge exposed by main.js.
+ * Depends on the small CsvWebviewBridge exposed by webview-main.js.
  * ------------------------------------------------------------------------ */
 (function initFloatPanel() {
   const bridge = window.CsvWebviewBridge;

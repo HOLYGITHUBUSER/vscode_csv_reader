@@ -2,7 +2,7 @@
  * E2E for the right-bottom floating panel (#csvFloatPanel): column filters
  * + row-height cycle button + clear-filter button.
  *
- * Runs real Chromium clicks / keyboard input against the real webview-表格界面/main.js.
+ * Runs real Chromium clicks / keyboard input against the real webview-表格界面/webview-main.js.
  * Expected contract (matches CsvEditorProvider's message handler):
  *   - adding a column condition → postMessage type:'filterSort'
  *   - clicking #csvRowHeightToggle → postMessage type:'setRowHeightMode',
