@@ -6,22 +6,21 @@
 
 ```text
 vscode_csv_reader/
-├─ extension-扩展逻辑/      扩展宿主 TypeScript + Node/jsdom 测试
-├─ webview-表格界面/        webview 前端脚本（直接进 VSIX）
-├─ lang-语言配置/     CSV/TSV 语言贡献
-├─ icon-扩展图标/           扩展图标
-├─ docs-项目文档/           product / architecture / engineering / naming
-├─ script-构建脚本/          版本号、打包、图标
+├─ extension-扩展逻辑/      ★ 扩展宿主 TS + 单测
+├─ webview-表格界面/        ★ webview 脚本（进 VSIX）
+├─ script-构建脚本/         升版本 / 打包
+├─ samples-试用样例/        手工 CSV
 ├─ e2e-浏览器测试/          Playwright
-├─ samples-试用样例/        手工试用 CSV（不进 VSIX）
-├─ artifacts-安装包/        latest.vsix + BUILD-INFO（安装分发）
-├─ out/                     tsc 产物 → package.json main
-├─ node_modules/            依赖
-└─ backup-归档旧文件/       本地归档（gitignore）
+├─ docs-项目文档/           文档
+├─ artifacts-安装包/        latest.vsix
+├─ icon.png                 扩展图标（根目录，减少一层）
+├─ language-语言配置.json   语言贡献（根目录，减少一层）
+├─ out/                     tsc 产物（资源管理器默认隐藏）
+└─ node_modules/            依赖（资源管理器默认隐藏）
 ```
 
-命名范式见 [naming-命名规范.md](naming-命名规范.md)：顶层 `{en-kebab}-{中文}`，文档 `{en}-{中文}.md`。  
-产物约定：只认 `artifacts-安装包/csv-custom-pro-latest.vsix`，根目录不放 `.vsix`。
+命名范式见 [naming-命名规范.md](naming-命名规范.md)。  
+侧栏噪音目录通过 `.vscode/settings.json` 的 `files.exclude` 隐藏。
 
 ## 扩展侧模块
 
@@ -110,8 +109,8 @@ Webview 侧状态：
 
 - `out/`
 - `webview-表格界面/`
-- `icon-扩展图标/icon.png`
-- `lang-语言配置/language-语言配置.json`
+- `icon.png`
+- `language-语言配置.json`
 - `package.json`
 - `README.md`
 - `LICENSE`

@@ -24,20 +24,21 @@
 - 中文段：2～6 字说明职责，用 `-` 连接。
 - 不要 camelCase 目录名（禁止 `langConfig`，用 `lang`）。
 
-当前顶层：
+当前顶层（业务可见）：
 
 ```text
 extension-扩展逻辑/
 webview-表格界面/
-lang-语言配置/
-icon-扩展图标/
 script-构建脚本/
 e2e-浏览器测试/
 samples-试用样例/
 docs-项目文档/
 artifacts-安装包/
-backup-归档旧文件/
+icon.png
+language-语言配置.json
 ```
+
+说明：单文件资源放根目录，不再为图标/语言单独建目录。`node_modules` / `out` / `backup` 等用 `files.exclude` 隐藏。
 
 ### 2. 扩展 TypeScript（纯英文）
 

@@ -1,11 +1,19 @@
-// Place your settings in this file to overwrite default and user settings.
 {
-	"files.exclude": {
-		"out": false // set this to true to hide the "out" folder with the compiled JS files
-	},
-	"search.exclude": {
-		"out": true // set this to false to include "out" folder in search results
-	},
-	// Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-	"typescript.tsc.autoDetect": "off"
+  "files.exclude": {
+    "**/node_modules": true,
+    "out": true,
+    "backup-归档旧文件": true,
+    ".cursor": true,
+    "**/.DS_Store": true,
+    "e2e-浏览器测试/test-results": true,
+    "e2e-浏览器测试/visual-review": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "out": true,
+    "backup-归档旧文件": true,
+    "artifacts-安装包/**/*.vsix": true,
+    "e2e-浏览器测试/test-results": true
+  },
+  "typescript.tsc.autoDetect": "off"
 }
