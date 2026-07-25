@@ -3,8 +3,6 @@
 .cursor/**
 .github/**
 extension-扩展逻辑/**
-lang-语言配置/eslint-代码检查.mjs
-lang-语言配置/vscode-test-测试配置.mjs
 script-构建脚本/**
 backup-归档旧文件/**
 docs-项目文档/**
@@ -22,6 +20,5 @@ out/extension-扩展逻辑/**
 out/ai-generated-tests-ai生成测试.js
 icon-扩展图标/Screenshot_*.png
 icon-扩展图标/*.orig.png
-icon-扩展图标/icon-原始.png
 samples-试用样例/**
 e2e-浏览器测试/**

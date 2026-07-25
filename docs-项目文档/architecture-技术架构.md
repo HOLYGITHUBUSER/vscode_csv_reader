@@ -37,7 +37,6 @@ extension-扩展逻辑/
 ├─ csvRender.ts             表格 HTML / chunk / 采样元数据
 ├─ csvSeparator.ts          分隔符检测与继承
 ├─ csvTypes.ts              共享类型
-├─ types/                   第三方声明（如 font-list）
 └─ test/                    Node 单测 + jsdom webview 测试
 ```
 

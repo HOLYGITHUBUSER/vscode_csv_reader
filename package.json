@@ -255,8 +255,7 @@
     "install:cursor": "cursor --install-extension artifacts-安装包/csv-custom-pro-latest.vsix --force"
   },
   "dependencies": {
-    "papaparse": "^5.5.3",
-    "undici": "^6.21.1"
+    "papaparse": "^5.5.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

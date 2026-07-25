@@ -78,11 +78,12 @@ backup-归档旧文件/
 
 ### 6. 构建与产物
 
-- 脚本在 `script-构建脚本/`，双语名。
+- **工程/构建脚本**只放 `script-构建脚本/`（版本递增、打包等），双语名。
 - 产物只进 `artifacts-安装包/`：
   - 稳定名：`csv-custom-pro-latest.vsix`
   - 时间戳名本地临时，gitignore。
 - **禁止**在仓库根目录放 `.vsix`。
+- 死代码 / 一次性工具 → `backup-归档旧文件/`（gitignore，不进 git）。
 
 ### 7. 禁止
 
