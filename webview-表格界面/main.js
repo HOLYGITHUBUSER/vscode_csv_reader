@@ -660,8 +660,159 @@ const getCellCoords = cell => ({ row: parseInt(cell.getAttribute('data-row')), c
 const clearSelection = () => { currentSelection.forEach(c => c.classList.remove('selected')); currentSelection = []; };
 const contextMenu = document.getElementById('contextMenu');
 
+/* ──────── Cell full-text preview (replaces un-copyable native title tooltips) ──────── */
+const cellPreview = document.getElementById('csvCellPreview');
+const cellPreviewBody = document.getElementById('csvPreviewBody');
+const cellPreviewCopyBtn = document.getElementById('csvPreviewCopy');
+const cellPreviewCloseBtn = document.getElementById('csvPreviewClose');
+let cellPreviewAnchor = null;
+let cellPreviewHideTimer = 0;
+let cellPreviewShowTimer = 0;
+
+const getFullCellText = cell => {
+  if (!cell) return '';
+  // Prefer data-full-text (multiline / long values stored for preview).
+  if (cell.hasAttribute('data-full-text')) {
+    return cell.getAttribute('data-full-text') || '';
+  }
+  // Legacy native title fallback.
+  if (cell.hasAttribute('title') && cell.getAttribute('title')) {
+    return cell.getAttribute('title') || '';
+  }
+  return getCellTextForData(cell);
+};
+
+const hideCellPreview = () => {
+  if (cellPreviewShowTimer) {
+    clearTimeout(cellPreviewShowTimer);
+    cellPreviewShowTimer = 0;
+  }
+  if (cellPreviewHideTimer) {
+    clearTimeout(cellPreviewHideTimer);
+    cellPreviewHideTimer = 0;
+  }
+  if (!cellPreview) return;
+  cellPreview.classList.remove('open');
+  cellPreview.setAttribute('aria-hidden', 'true');
+  cellPreviewAnchor = null;
+};
+
+const positionCellPreview = (anchor) => {
+  if (!cellPreview || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const pad = 8;
+  // Temporarily show to measure.
+  cellPreview.style.visibility = 'hidden';
+  cellPreview.classList.add('open');
+  const pw = cellPreview.offsetWidth || 320;
+  const ph = cellPreview.offsetHeight || 160;
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  if (left + pw > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - pw - pad);
+  if (top + ph > window.innerHeight - pad) top = Math.max(pad, rect.top - ph - 6);
+  if (left < pad) left = pad;
+  if (top < pad) top = pad;
+  cellPreview.style.left = `${Math.round(left)}px`;
+  cellPreview.style.top = `${Math.round(top)}px`;
+  cellPreview.style.visibility = '';
+};
+
+const showCellPreview = (cell, opts = {}) => {
+  if (!cellPreview || !cellPreviewBody || !cell) return;
+  const text = getFullCellText(cell);
+  if (!text) return;
+  cellPreviewAnchor = cell;
+  cellPreviewBody.textContent = text;
+  cellPreview.setAttribute('aria-hidden', 'false');
+  positionCellPreview(cell);
+  cellPreview.classList.add('open');
+  if (opts.focusBody) {
+    try { cellPreviewBody.focus({ preventScroll: true }); } catch { try { cellPreviewBody.focus(); } catch {} }
+  }
+  if (opts.selectAll) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(cellPreviewBody);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch {}
+  }
+};
+
+const scheduleShowCellPreview = (cell) => {
+  if (!cell || editingCell) return;
+  // Only auto-preview cells that carry full text payload (multiline / long).
+  if (!cell.hasAttribute('data-full-text') && !cell.getAttribute('title')) return;
+  if (cellPreviewShowTimer) clearTimeout(cellPreviewShowTimer);
+  cellPreviewShowTimer = setTimeout(() => {
+    cellPreviewShowTimer = 0;
+    showCellPreview(cell);
+  }, 350);
+};
+
+const scheduleHideCellPreview = () => {
+  if (cellPreviewHideTimer) clearTimeout(cellPreviewHideTimer);
+  cellPreviewHideTimer = setTimeout(() => {
+    cellPreviewHideTimer = 0;
+    hideCellPreview();
+  }, 200);
+};
+
+const copyTextToClipboard = (text) => {
+  if (typeof text !== 'string') return;
+  vscode.postMessage({ type: 'copyToClipboard', text });
+};
+
+if (cellPreviewCopyBtn) {
+  cellPreviewCopyBtn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const text = cellPreviewBody ? cellPreviewBody.textContent || '' : '';
+    copyTextToClipboard(text);
+    cellPreviewCopyBtn.textContent = '已复制';
+    setTimeout(() => { cellPreviewCopyBtn.textContent = '复制'; }, 1200);
+  });
+}
+if (cellPreviewCloseBtn) {
+  cellPreviewCloseBtn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideCellPreview();
+  });
+}
+if (cellPreview) {
+  cellPreview.addEventListener('mouseenter', () => {
+    if (cellPreviewHideTimer) {
+      clearTimeout(cellPreviewHideTimer);
+      cellPreviewHideTimer = 0;
+    }
+  });
+  cellPreview.addEventListener('mouseleave', () => {
+    scheduleHideCellPreview();
+  });
+  // Allow selecting text without starting table selection.
+  cellPreview.addEventListener('mousedown', e => e.stopPropagation());
+}
+
+table.addEventListener('mouseover', e => {
+  if (editingCell) return;
+  const cell = e.target && e.target.closest ? e.target.closest('td[data-col], th[data-col]') : null;
+  if (!cell || cell.getAttribute('data-col') === '-1') return;
+  if (cell === cellPreviewAnchor && cellPreview && cellPreview.classList.contains('open')) return;
+  scheduleShowCellPreview(cell);
+});
+table.addEventListener('mouseout', e => {
+  const to = e.relatedTarget;
+  if (cellPreview && to && cellPreview.contains(to)) return;
+  const cell = e.target && e.target.closest ? e.target.closest('td[data-col], th[data-col]') : null;
+  if (!cell) return;
+  scheduleHideCellPreview();
+});
+
 /* ──────── UPDATED showContextMenu ──────── */
 const showContextMenu = (x, y, row, col) => {
+  hideCellPreview();
   contextMenu.innerHTML = '';
   const item = (label, cb) => {
     const d = document.createElement('div');
@@ -703,7 +854,21 @@ const showContextMenu = (x, y, row, col) => {
       persistSortState(); updateSortHeaderIndicator();
       vscode.postMessage({ type: 'resetSort' });
     });
-  }        
+  }
+
+  /* Cell full text — native title was not copyable */
+  const contextCell = (!isNaN(row) && !isNaN(col) && col >= 0)
+    ? table.querySelector(`${lastContextIsHeader ? 'th' : 'td'}[data-row="${row}"][data-col="${col}"]`)
+    : null;
+  if (contextCell) {
+    if (contextMenu.children.length) divider();
+    item('查看全文（可复制）', () => {
+      showCellPreview(contextCell, { focusBody: true, selectAll: true });
+    });
+    item('复制单元格全文', () => {
+      copyTextToClipboard(getFullCellText(contextCell));
+    });
+  }
 
   /* Row section */
   if (!isNaN(row) && row >= 0) {
@@ -1509,6 +1674,23 @@ document.addEventListener('keydown', e => {
   if (maybeHandleZoomShortcut(e)) {
     return;
   }
+  // Escape closes full-text preview first.
+  if (e.key === 'Escape' && cellPreview && cellPreview.classList.contains('open')) {
+    e.preventDefault();
+    hideCellPreview();
+    return;
+  }
+  // Space / Alt+Enter on selected cell: open copyable full-text preview (not native title).
+  if (!editingCell && !e.ctrlKey && !e.metaKey && currentSelection.length === 1) {
+    const only = currentSelection[0];
+    const isSpace = e.key === ' ' || e.code === 'Space';
+    const isAltEnter = e.key === 'Enter' && e.altKey;
+    if ((isSpace || isAltEnter) && only && only.getAttribute('data-col') !== '-1') {
+      e.preventDefault();
+      showCellPreview(only, { focusBody: true, selectAll: true });
+      return;
+    }
+  }
   const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
   if ((e.ctrlKey || e.metaKey) && key === 'f') {
     e.preventDefault();
@@ -1979,6 +2161,7 @@ const insertNewlineAtCaret = cell => {
 const editCell = (cell, event, mode = 'detail') => {
   if(editingCell === cell) return;
   if(editingCell) editingCell.blur();
+  hideCellPreview();
   const wasCompact = table.classList.contains('row-compact');
   if (wasCompact) restoreCompactNewlineMarkers(cell);
   cell.classList.remove('selected');
@@ -2054,7 +2237,8 @@ const copySelectionToClipboard = () => {
     for(let c = minCol; c <= maxCol; c++){
       const selector = (hasHeader && r === 0 ? 'th' : 'td') + '[data-row="'+r+'"][data-col="'+c+'"]';
       const cell = table.querySelector(selector);
-      rowVals.push(cell ? getCellTextForData(cell) : '');
+      // Prefer data-full-text so multiline/long values copy completely.
+      rowVals.push(cell ? getFullCellText(cell) : '');
     }
     csv += rowVals.join(CSV_SEPARATOR) + '\n';
   }

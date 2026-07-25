@@ -4,3 +4,10 @@ node_modules/
 .DS_Store
 test-results/
 backup-归档旧文件/
+
+# VSIX only lives under artifacts-安装包/; never at repo root
+/*.vsix
+
+# Intermediate timestamped builds are disposable; track latest + BUILD-INFO in git if desired
+# (package script already prunes to latest + 2 timestamps locally)
+artifacts-安装包/csv-custom-pro-*-20*.vsix

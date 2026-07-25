@@ -1511,6 +1511,65 @@ class CsvEditorController {
       th, td { padding: ${cellPadding}px 8px; border: 1px solid ${isDark ? '#555' : '#ccc'}; font-size: inherit; vertical-align: top; }
       th { background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; position: sticky; top: 0; z-index: 3; }
       td { overflow: hidden; }
+      td[data-full-text], th[data-full-text] { cursor: help; }
+      #csvCellPreview {
+        position: fixed;
+        z-index: 1300;
+        min-width: 240px;
+        max-width: min(520px, calc(100vw - 24px));
+        max-height: min(360px, calc(100vh - 24px));
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid ${isDark ? '#555' : '#ccc'};
+        background: ${isDark ? 'rgba(30,30,30,0.98)' : 'rgba(255,255,255,0.98)'};
+        color: ${isDark ? '#ddd' : '#222'};
+        box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        font-size: inherit;
+      }
+      #csvCellPreview.open { display: flex; }
+      #csvCellPreview .csv-preview-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+      #csvCellPreview .csv-preview-title {
+        font-weight: 600;
+        font-size: 0.9em;
+        color: ${isDark ? '#bbb' : '#555'};
+      }
+      #csvCellPreview .csv-preview-actions { display: flex; gap: 6px; }
+      #csvCellPreview button {
+        height: 26px;
+        border: 1px solid ${isDark ? '#555' : '#ccc'};
+        border-radius: 4px;
+        background: ${isDark ? '#2d2d2d' : '#f5f5f5'};
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        padding: 0 10px;
+      }
+      #csvCellPreview button:hover { border-color: #0a84ff; color: #0a84ff; }
+      #csvCellPreview .csv-preview-body {
+        flex: 1 1 auto;
+        min-height: 64px;
+        max-height: 280px;
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        user-select: text;
+        -webkit-user-select: text;
+        cursor: text;
+        padding: 8px;
+        border-radius: 6px;
+        border: 1px solid ${isDark ? '#444' : '#ddd'};
+        background: ${isDark ? '#1a1a1a' : '#fafafa'};
+        line-height: 1.45;
+      }
       /* Off-screen rows skip work; virtual scroll keeps DOM small on top of this. */
       tbody tr {
         content-visibility: auto;
@@ -1852,6 +1911,16 @@ class CsvEditorController {
           <button id="findOverflowPreserveCase" class="fr-overflow-item" type="button" role="menuitem">Toggle preserve case</button>
         </div>
       </div>
+    </div>
+    <div id="csvCellPreview" role="dialog" aria-label="单元格全文预览" aria-hidden="true">
+      <div class="csv-preview-toolbar">
+        <span class="csv-preview-title">单元格全文（可选中复制）</span>
+        <div class="csv-preview-actions">
+          <button type="button" id="csvPreviewCopy" title="复制全文">复制</button>
+          <button type="button" id="csvPreviewClose" title="关闭">关闭</button>
+        </div>
+      </div>
+      <div class="csv-preview-body" id="csvPreviewBody" tabindex="0"></div>
     </div>
     <div id="contextMenu"></div>
 

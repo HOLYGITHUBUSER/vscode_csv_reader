@@ -144,10 +144,10 @@ describe('Virtual row and cell invariants', () => {
       /*hiddenRows*/ 0,
       /*clickableLinks*/ true
     );
-    // Wrap styling is shared via CSS (.cell-body); cells only keep title + content.
+    // Wrap styling is shared via CSS (.cell-body); full text is in data-full-text (copyable popover), not native title.
     assert.ok(rendered.tableHtml.includes('class="cell-body"') || rendered.tableHtml.includes('class=\'cell-body\'') || rendered.tableHtml.includes('<div class="cell-body">'));
     assert.ok(rendered.tableHtml.includes('Hello\nWorld'));
-    assert.match(rendered.tableHtml, /title="Hello[\r\n]+World"/);
+    assert.match(rendered.tableHtml, /data-full-text="Hello(?:&#10;|&#x0A;|[\r\n])+World"/);
   });
 
   it('supports opt-in theme foreground column colors', () => {

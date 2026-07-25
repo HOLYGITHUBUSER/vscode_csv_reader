@@ -6,60 +6,54 @@
 
 ```text
 vscode_csv_reader/
-├─ extension-扩展逻辑/      VS Code 扩展侧 TypeScript 源码和 Node/jsdom 测试
-├─ webview-表格界面/        webview 前端脚本
-├─ langConfig-语言配置/     CSV/TSV/PSV 语言贡献配置
+├─ extension-扩展逻辑/      扩展宿主 TypeScript + Node/jsdom 测试
+├─ webview-表格界面/        webview 前端脚本（直接进 VSIX）
+├─ langConfig-语言配置/     CSV/TSV 语言贡献
 ├─ icon-扩展图标/           扩展图标
-├─ docs-项目文档/           产品、架构、工程文档
-├─ build-构建脚本/          版本号、图标处理、VSIX 打包脚本
-├─ e2e-浏览器测试/          Playwright 真浏览器测试
-├─ samples-试用样例/        手工试用/压力测试 CSV
-├─ artifacts-安装包/        打包后的 VSIX 与 BUILD-INFO.md
-├─ out/                     TypeScript 编译产物，可删除重建
-├─ node_modules/            npm 依赖，可删除重装
-└─ backup-归档旧文件/       旧文件归档，不进 VSIX
+├─ docs-项目文档/           产品 / 架构 / 工程
+├─ build-构建脚本/          版本号、打包、图标
+├─ e2e-浏览器测试/          Playwright
+├─ samples-试用样例/        手工试用 CSV（不进 VSIX）
+├─ artifacts-安装包/        latest.vsix + BUILD-INFO（安装分发）
+├─ out/                     tsc 产物 → package.json main
+├─ node_modules/            依赖
+└─ backup-归档旧文件/       本地归档（gitignore）
 ```
+
+命名约定：`功能英文-中文说明`（如 `extension-扩展逻辑`）。  
+产物约定：只认 `artifacts-安装包/csv-custom-pro-latest.vsix`，根目录不放 `.vsix`。
 
 ## 扩展侧模块
 
 ```text
 extension-扩展逻辑/
-├─ extension.ts             activate/deactivate 入口
-├─ commands.ts              命令面板命令注册
-├─ CsvEditorProvider.ts     CustomTextEditorProvider 与消息编排
-├─ csvCellFormat.ts         HTML/CSS escape、链接、类型识别、列颜色
-├─ csvFilterSort.ts         过滤条件归一化、过滤/排序纯逻辑
-├─ csvFormat.ts             CSV 字段 span、保格式写回
-├─ csvRender.ts             表格 HTML 与 chunk HTML 生成
-├─ csvSeparator.ts          分隔符配置、自动检测、继承规则
+├─ extension.ts             activate/deactivate
+├─ commands.ts              命令面板
+├─ CsvEditorProvider.ts     Custom Editor 编排中心（HTML / 消息 / 状态）
+├─ csvDocument.ts           文档模型与撤销
+├─ csvCellFormat.ts         escape、链接、类型色、data-full-text
+├─ csvFilterSort.ts         过滤/排序纯逻辑
+├─ csvFormat.ts             保格式字段写回
+├─ csvRender.ts             表格 HTML / chunk / 采样元数据
+├─ csvSeparator.ts          分隔符检测与继承
 ├─ csvTypes.ts              共享类型
+├─ types/                   第三方声明（如 font-list）
 └─ test/                    Node 单测 + jsdom webview 测试
 ```
 
-`CsvEditorProvider.ts` 仍是扩展侧编排中心，负责：
-
-- 注册 custom editor。
-- 解析文档、读取配置、生成 webview HTML。
-- 接收 webview `postMessage`。
-- 写回文档和维护 per-URI 状态。
-- 调用 `csvRender.ts`、`csvFilterSort.ts` 等纯模块。
+`CsvEditorProvider.ts` 负责：注册 custom editor、解析文档、生成 webview HTML、处理 `postMessage`、写回与 per-URI 状态。
 
 ## Webview 模块
 
 ```text
 webview-表格界面/
-├─ main.js                  表格选择、编辑、粘贴、排序、chunk、缩放、尺寸持久化
-├─ webviewFilterPanel.js    右下角过滤面板、列搜索 combobox、行高按钮
-└─ webviewFindReplace.js    查找替换 widget
+├─ main.js                  选区、编辑、粘贴、排序、虚拟滚动、缩放、全文预览
+├─ webviewFilterPanel.js    全局搜索、列过滤 combobox、行高
+└─ webviewFindReplace.js    查找替换
 ```
 
-脚本加载顺序由 `CsvEditorProvider.ts` 的 HTML 模板控制：
-
-1. `webviewFindReplace.js`
-2. `main.js`
-3. `webviewFilterPanel.js`
-
-`main.js` 暴露 `window.CsvWebviewBridge` 给过滤面板使用，避免过滤面板直接依赖大量内部变量。
+加载顺序：`webviewFindReplace.js` → `main.js` → `webviewFilterPanel.js`。  
+`main.js` 暴露 `window.CsvWebviewBridge` 给过滤面板。
 
 ## Webview 与扩展通信
 
@@ -88,11 +82,12 @@ webview.postMessage({ type, ...payload })
 
 ## 大文件策略
 
-- 默认 `csv.maxFileSizeMB = 100`。
-- 初始渲染只输出首屏表格和必要 chunk 元数据。
-- `csvRender.ts` 根据列数动态控制每个 chunk 的行数，避免单 chunk 单元格过多。
-- 过滤/排序后只返回首屏结果，后续通过 `requestChunk` 继续加载。
-- `samples-试用样例/ultimate-50mb-完整压力测试.csv` 是手工压力样例。
+- 默认 `csv.maxFileSizeMB` 可配置（见 package contributes）。
+- 首屏只渲染有限单元格（`csvRender.ts` 按列数缩放 chunk 行数）；类型/列宽只采样前若干行。
+- 单元格 HTML 尽量瘦身；完整长文用 `data-full-text` + 可复制预览浮层，不用原生 title。
+- 大表（≥400 行）webview 侧使用**窗口虚拟滚动**：DOM 只保留视口附近行，`requestChunk` 按窗口拉取。
+- 过滤/排序后大结果走完整 `updateWebviewContent` 以保持虚拟滚动元数据一致。
+- 样例：日常 `smoke-日常验收.csv`；压测 `ultimate-50mb-完整压力测试.csv`。
 
 ## 状态持久化
 

@@ -65,11 +65,22 @@ export function formatCellContent(text: string, linkify: boolean): string {
   return linkify ? linkifyUrls(escaped) : escaped;
 }
 
+/**
+ * Store full cell text for preview/copy. Native `title` tooltips are not selectable,
+ * so we expose data-full-text and let the webview show a copyable popover.
+ * Used for multiline cells and long single-line values (truncated in the grid).
+ */
 export function getMultilineCellTitleAttr(text: string): string {
-  if (!text || (text.indexOf('\n') === -1 && text.indexOf('\r') === -1)) {
-    return '';
-  }
-  return ` title="${escapeHtml(text)}"`;
+  if (!text) return '';
+  const hasNewline = text.indexOf('\n') !== -1 || text.indexOf('\r') !== -1;
+  const isLong = text.length >= 48;
+  if (!hasNewline && !isLong) return '';
+  // Encode newlines as entities so the attribute stays single-line in HTML.
+  const encoded = escapeHtml(text)
+    .replace(/\r\n/g, '&#10;')
+    .replace(/\n/g, '&#10;')
+    .replace(/\r/g, '&#10;');
+  return ` data-full-text="${encoded}"`;
 }
 
 export function isDate(value: string): boolean {
