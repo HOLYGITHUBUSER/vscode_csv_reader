@@ -1,6 +1,6 @@
 # CSV Custom Pro
 
-![CSV Custom Pro 图标](00-config-工程配置/icon.png)
+![CSV Custom Pro 图标](00-config-工程配置/icon-扩展图标.png)
 
 专为 VS Code / Cursor / Windsurf 打造的高级 CSV 编辑器：表格编辑、类型着色、分块渲染、窗口虚拟滚动、排序过滤、查找替换、可复制全文预览。
 
@@ -40,7 +40,7 @@ npm run install:cursor
 
 ```text
 vscode_csv_reader/
-├─ 00-config-工程配置/       图标 / 语言配置 / tsconfig / LICENSE
+├─ 00-config-工程配置/       图标 / tsconfig / 许可证
 ├─ 01-extension-扩展逻辑/    ★ 扩展宿主源码 + 单测
 ├─ 02-webview-表格界面/      ★ 表格 UI
 ├─ 03-script-构建脚本/       升版本 / 打包
@@ -57,4 +57,4 @@ vscode_csv_reader/
 
 ## 许可证
 
-[MIT License](00-config-工程配置/LICENSE)
+[MIT License](00-config-工程配置/license-许可证.txt)

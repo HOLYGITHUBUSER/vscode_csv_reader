@@ -8,7 +8,7 @@
 
 ```text
 vscode_csv_reader/
-├─ 00-config-工程配置/       icon / language / tsconfig / LICENSE
+├─ 00-config-工程配置/       图标 / tsconfig / 许可证
 ├─ 01-extension-扩展逻辑/    ★ 宿主 TS + 单测
 ├─ 02-webview-表格界面/      ★ webview-*.js
 ├─ 03-script-构建脚本/       bump-version / package-vsix
@@ -26,10 +26,9 @@ vscode_csv_reader/
 
 | 文件 | 用途 |
 | --- | --- |
-| `icon.png` | `package.json` → `icon` |
-| `language-语言配置.json` | CSV/TSV language configuration |
-| `tsconfig.json` | `npm run compile` |
-| `LICENSE` | MIT（`package.json` 含 `license` 字段） |
+| `icon-扩展图标.png` | `package.json` → `icon` |
+| `tsconfig-编译配置.json` | `npm run compile` |
+| `license-许可证.txt` | MIT 全文（`package.json` 也有 `"license": "MIT"`） |
 
 ### 01-extension 模块
 
@@ -65,7 +64,7 @@ vscode_csv_reader/
 
 ### VSIX 进包内容
 
-`out/`、`02-webview-表格界面/`、`00-config` 中的 icon/language、`package.json`、`README.md`。以 `.vscodeignore` 为准。
+`out/`、`02-webview-表格界面/`、`00-config` 中的图标、`package.json`、`README.md`。以 `.vscodeignore` 为准。
 
 ---
 
