@@ -2,8 +2,8 @@
 """Bump package.json patch version (x.y.Z -> x.y.Z+1), then compile or package.
 
 Usage:
-    python3 build-构建脚本/bump-version-版本递增.py            # bump + npm run compile
-    python3 build-构建脚本/bump-version-版本递增.py --package  # bump + npm run package
+    python3 script-构建脚本/bump-version-版本递增.py            # bump + npm run compile
+    python3 script-构建脚本/bump-version-版本递增.py --package  # bump + npm run package
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def main() -> None:
     print(f"version {old} -> {new}")
 
     if args.package:
-        cmd = ["node", str(ROOT / "build-构建脚本" / "package-vsix-打包.cjs")]
+        cmd = ["node", str(ROOT / "script-构建脚本" / "package-vsix-打包.cjs")]
     else:
         cmd = ["npm", "run", "compile"]
     r = subprocess.run(cmd, cwd=ROOT)

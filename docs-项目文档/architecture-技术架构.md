@@ -11,7 +11,7 @@ vscode_csv_reader/
 ├─ lang-语言配置/     CSV/TSV 语言贡献
 ├─ icon-扩展图标/           扩展图标
 ├─ docs-项目文档/           product / architecture / engineering / naming
-├─ build-构建脚本/          版本号、打包、图标
+├─ script-构建脚本/          版本号、打包、图标
 ├─ e2e-浏览器测试/          Playwright
 ├─ samples-试用样例/        手工试用 CSV（不进 VSIX）
 ├─ artifacts-安装包/        latest.vsix + BUILD-INFO（安装分发）

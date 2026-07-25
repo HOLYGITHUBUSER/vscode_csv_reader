@@ -5,7 +5,7 @@
 extension-扩展逻辑/**
 lang-语言配置/eslint-代码检查.mjs
 lang-语言配置/vscode-test-测试配置.mjs
-build-构建脚本/**
+script-构建脚本/**
 backup-归档旧文件/**
 docs-项目文档/**
 artifacts-安装包/**

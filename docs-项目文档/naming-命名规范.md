@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 顶层目录 | `{en-kebab}-{中文职责}` | `extension-扩展逻辑/` |
 | 人读文档 | `{en}-{中文}.md` | `product-产品设计.md` |
-| 构建脚本 | `{en-kebab}-{中文}.{ext}` | `package-vsix-打包.cjs` |
+| 构建脚本（目录 `script-构建脚本/`） | `{en-kebab}-{中文}.{ext}` | `package-vsix-打包.cjs` |
 | 样例数据 | `{en}-{中文}.{ext}` | `smoke-日常验收.csv` |
 | Webview 脚本 | `webview-{en-kebab}.js` | `webview-filter-panel.js` |
 | 扩展源码 `.ts` | 英文；类用 PascalCase，模块 `csv` 前缀 camelCase | `CsvEditorProvider.ts`、`csvRender.ts` |
@@ -31,7 +31,7 @@ extension-扩展逻辑/
 webview-表格界面/
 lang-语言配置/
 icon-扩展图标/
-build-构建脚本/
+script-构建脚本/
 e2e-浏览器测试/
 samples-试用样例/
 docs-项目文档/
@@ -78,7 +78,7 @@ backup-归档旧文件/
 
 ### 6. 构建与产物
 
-- 脚本在 `build-构建脚本/`，双语名。
+- 脚本在 `script-构建脚本/`，双语名。
 - 产物只进 `artifacts-安装包/`：
   - 稳定名：`csv-custom-pro-latest.vsix`
   - 时间戳名本地临时，gitignore。

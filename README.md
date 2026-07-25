@@ -50,7 +50,7 @@ vscode_csv_reader/
 ├─ webview-表格界面/       webview-*.js 表格 UI
 ├─ lang-语言配置/          CSV/TSV 语言贡献
 ├─ icon-扩展图标/          图标
-├─ build-构建脚本/         版本 / 打包 / 图标
+├─ script-构建脚本/         版本 / 打包 / 图标
 ├─ e2e-浏览器测试/         Playwright
 ├─ samples-试用样例/       手工 CSV
 ├─ docs-项目文档/          product / architecture / engineering / naming

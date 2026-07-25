@@ -1,7 +1,7 @@
 """一次性脚本：把 icon-扩展图标/icon.png 居中裁成正方形，缩到 1024，并加圆角 alpha。
 
 用法：
-    python3 build-构建脚本/round-icon-图标圆角.py
+    python3 script-构建脚本/round-icon-图标圆角.py
 
 - 输入/输出：icon-扩展图标/icon.png（就地覆盖）
 - 圆角半径：输出尺寸的 22%（近似 macOS squircle 观感）
