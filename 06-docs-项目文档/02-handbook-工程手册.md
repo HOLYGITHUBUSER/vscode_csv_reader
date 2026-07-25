@@ -94,12 +94,21 @@ npm test                    # 单测 + jsdom
 npm run test:webview        # 仅 webview-* 单测
 npm run test:e2e            # Playwright
 npm run test:full           # test + e2e + package
-npm run package:force       # 不升版打包 → 07-artifacts/latest.vsix
-npm run package             # 升 PATCH 再打包（见 bump 脚本）
+npm run package:force       # 不升版打包（内部调 Python）
+npm run package             # 升 PATCH 再打包
 npm run install:cursor      # 装 latest 到 Cursor
 ```
 
-环境：Node ≥ 18；需要时 `npx playwright install chromium`。
+**Python 直接编译打包（推荐）：**
+
+```bash
+python3 03-script-构建脚本/build-编译打包.py           # 编译 + 时间戳 VSIX
+python3 03-script-构建脚本/build-编译打包.py --bump    # 先升版本再打包
+```
+
+产物名：`csv-custom-pro-v{版本}-{YYYYMMDD}-{HHmmss}.vsix`，另写 `latest` 别名与 `build-info-构建信息.md`。
+
+环境：Node ≥ 18、Python 3；需要时 `npx playwright install chromium`。
 
 ### 改代码入口
 

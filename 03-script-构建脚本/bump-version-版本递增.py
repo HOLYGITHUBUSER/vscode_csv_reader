@@ -52,7 +52,8 @@ def main() -> None:
     print(f"version {old} -> {new}")
 
     if args.package:
-        cmd = ["node", str(ROOT / "03-script-构建脚本" / "package-vsix-打包.cjs")]
+        # 委托统一入口（已含编译 + 时间戳打包）
+        cmd = [sys.executable, str(ROOT / "03-script-构建脚本" / "build-编译打包.py")]
     else:
         cmd = ["npm", "run", "compile"]
     r = subprocess.run(cmd, cwd=ROOT)

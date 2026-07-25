@@ -12,4 +12,6 @@ test-results/
 
 # Intermediate timestamped builds are disposable; track latest + BUILD-INFO
 # (package script already prunes to latest + 2 timestamps locally)
+# 时间戳包（新旧两种命名）本地保留，不进 git；latest 可跟踪
 07-artifacts-安装包/csv-custom-pro-*-20*.vsix
+07-artifacts-安装包/csv-custom-pro-v*-20*.vsix

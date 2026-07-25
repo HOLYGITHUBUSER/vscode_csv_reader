@@ -25,7 +25,8 @@ git clone https://github.com/HOLYGITHUBUSER/vscode_csv_reader.git
 cd vscode_csv_reader
 npm install
 npm test
-npm run package:force
+# 编译 + 打包到 07-artifacts-安装包/（Python 一条命令即可）
+python3 03-script-构建脚本/build-编译打包.py
 npm run install:cursor
 ```
 
