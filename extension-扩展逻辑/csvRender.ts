@@ -31,8 +31,10 @@ export type CsvTableRenderResult = {
   chunkState: ChunkRenderState | undefined;
 };
 
-const BASE_CHUNK_ROWS = 1000;
-const MAX_CELLS_PER_CHUNK = 20000;
+// Larger initial page: users complained that only ~1000 rows felt available.
+// Wide tables still scale down via MAX_CELLS_PER_CHUNK so a single chunk stays bounded.
+const BASE_CHUNK_ROWS = 3000;
+const MAX_CELLS_PER_CHUNK = 50000;
 const MIN_CHUNK_ROWS = 10;
 
 function cellBorder(isDark: boolean): string {
