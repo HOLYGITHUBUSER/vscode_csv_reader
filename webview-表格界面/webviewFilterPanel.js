@@ -118,14 +118,20 @@
     return `${idx + 1}. ${label}`;
   };
   const getColumnQuery = () => (columnInput ? String(columnInput.value || '').trim().toLowerCase() : '');
-  const getColumnCandidates = () => {
-    const query = getColumnQuery();
+  /** Build the dropdown list. Empty / exact-selected label → all columns; typing filters. No hard cap. */
+  const getColumnCandidates = (opts = {}) => {
     const all = columnLabels.map((label, index) => ({
       index,
       label: String(label || '').trim() || `列 ${index + 1}`,
       display: getColumnLabel(index)
     }));
-    if (!query) return all.slice(0, 30);
+    let query = opts.showAll ? '' : getColumnQuery();
+    // Click/focus keeps the selected label in the input; treat that as "browse all", not a filter.
+    if (query) {
+      const selectedDisplay = getColumnLabel(selectedColumnIndex).toLowerCase();
+      if (query === selectedDisplay) query = '';
+    }
+    if (!query) return all;
     return all.filter(item => {
       const humanIndex = String(item.index + 1);
       const zeroIndex = String(item.index);
@@ -133,7 +139,7 @@
         zeroIndex === query ||
         item.label.toLowerCase().includes(query) ||
         item.display.toLowerCase().includes(query);
-    }).slice(0, 30);
+    });
   };
   const setSelectedColumn = (index, updateInput = true) => {
     if (!columnInput) return;
@@ -150,18 +156,21 @@
   const positionColumnOptions = () => {
     if (!columnOptions || !columnInput) return;
     const rect = columnInput.getBoundingClientRect();
-    const width = Math.min(320, Math.max(rect.width, window.innerWidth - 32));
+    const width = Math.min(360, Math.max(rect.width, Math.min(280, window.innerWidth - 32)));
     const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
-    const estimatedHeight = Math.min(220, columnOptions.scrollHeight || 220);
+    // Match CSS max-height so long column lists scroll instead of being clipped.
+    const maxListHeight = Math.min(Math.floor(window.innerHeight * 0.5), 420);
+    const estimatedHeight = Math.min(maxListHeight, columnOptions.scrollHeight || maxListHeight);
     const topAbove = rect.top - estimatedHeight - 6;
     const top = topAbove >= 8 ? topAbove : Math.min(window.innerHeight - estimatedHeight - 8, rect.bottom + 6);
     columnOptions.style.left = `${Math.round(left)}px`;
     columnOptions.style.top = `${Math.max(8, Math.round(top))}px`;
     columnOptions.style.width = `${Math.round(width)}px`;
+    columnOptions.style.maxHeight = `${maxListHeight}px`;
   };
-  const renderColumnOptions = () => {
+  const renderColumnOptions = (opts = {}) => {
     if (!columnOptions || !columnInput) return;
-    const candidates = getColumnCandidates();
+    const candidates = getColumnCandidates(opts);
     columnOptions.textContent = '';
     if (!candidates.length) {
       const empty = document.createElement('div');
@@ -380,7 +389,8 @@
     columnInput.addEventListener('focus', () => {
       columnInput.select();
       activeColumnOptionIndex = 0;
-      renderColumnOptions();
+      // Open with full list (selected label is not treated as a search query).
+      renderColumnOptions({ showAll: true });
     });
     columnInput.addEventListener('input', () => {
       activeColumnOptionIndex = 0;

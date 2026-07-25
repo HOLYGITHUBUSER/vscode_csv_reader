@@ -306,19 +306,20 @@ describe('CsvEditorProvider utility methods', () => {
     assert.strictEqual(meta.serializedChunkCount, 0);
     assert.strictEqual(meta.hasRemoteChunks, true);
     assert.strictEqual(meta.hasChunkState, true);
-    assert.strictEqual(meta.nextChunkStart, 1000);
+    // 3 cols → min(800, floor(10000/3)) = 800 rows per chunk
+    assert.strictEqual(meta.nextChunkStart, 800);
 
     const nextChunk = CsvEditorProvider.__test.generateRuntimeChunkTransport(
       rows,
       false,
       false,
       0,
-      1000
+      800
     );
     assert.ok(nextChunk.response);
     assert.strictEqual(nextChunk.response?.done, false);
-    assert.strictEqual(nextChunk.response?.nextStart, 2000);
-    assert.ok(nextChunk.response?.html.includes('data-row="1000" data-col="0"'));
+    assert.strictEqual(nextChunk.response?.nextStart, 1600);
+    assert.ok(nextChunk.response?.html.includes('data-row="800" data-col="0"'));
 
     const virtualChunk = CsvEditorProvider.__test.generateRuntimeChunkTransport(
       rows,
@@ -343,8 +344,8 @@ describe('CsvEditorProvider utility methods', () => {
       /* addSerialIndex */ false,
       /* hiddenRows */ 0
     );
-    // 20,000 max cells per chunk => floor(20000 / 250) = 80 rows per chunk.
-    assert.strictEqual(meta.nextChunkStart, 80);
+    // 10,000 max cells per chunk => floor(10000 / 250) = 40 rows per chunk.
+    assert.strictEqual(meta.nextChunkStart, 40);
     assert.strictEqual(meta.hasRemoteChunks, true);
   });
 });

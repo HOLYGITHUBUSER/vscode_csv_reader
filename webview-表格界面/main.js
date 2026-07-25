@@ -107,10 +107,13 @@ const normalizeSizeState = (raw, minSize) => {
   return out;
 };
 
-const applySizeStateToRenderedCells = () => {
+/** Apply persisted col/row sizes. Prefer a subtree (new chunk) over full-table scans. */
+const applySizeStateToRenderedCells = (root = table) => {
+  if (!root) return;
+  const scope = root.querySelectorAll ? root : table;
   for (const [col, width] of Object.entries(columnSizeState)) {
     const px = Math.max(40, Math.round(Number(width)));
-    table.querySelectorAll(`[data-col="${col}"]`).forEach(cell => {
+    scope.querySelectorAll(`[data-col="${col}"]`).forEach(cell => {
       cell.style.width = `${px}px`;
       cell.style.minWidth = `${px}px`;
       cell.style.maxWidth = `${px}px`;
@@ -118,7 +121,7 @@ const applySizeStateToRenderedCells = () => {
   }
   for (const [row, height] of Object.entries(rowSizeState)) {
     const px = Math.max(getMinRowHeight(), Math.round(Number(height)));
-    table.querySelectorAll(`[data-row="${row}"]`).forEach(cell => {
+    scope.querySelectorAll(`[data-row="${row}"]`).forEach(cell => {
       cell.style.height = `${px}px`;
       cell.style.minHeight = `${px}px`;
       const body = cell.querySelector(':scope > .cell-body');
@@ -255,14 +258,14 @@ const restoreState = () => {
   } catch {}
 };
 
-/* ──────────── VIRTUAL-SCROLL LOADER ──────────── */
-// We use a <template> to carry JSON so CSP doesn't block it like a <script> might
+/* ──────────── VIRTUAL / WINDOWED SCROLL LOADER ──────────── */
+// Large CSVs use a sliding window: only ~viewport+overscan rows stay in the DOM.
+// Small CSVs keep the older append-on-scroll path.
 const chunkTemplate = document.getElementById('__csvChunks');
 let csvChunks = [];
 try {
   csvChunks = chunkTemplate ? JSON.parse(chunkTemplate.textContent || '[]') : [];
 } catch (e) {
-  // Swallow parse errors; chunking will simply be disabled
   csvChunks = [];
 }
 let remoteNextChunkStart = Number.parseInt(root?.dataset?.nextchunkstart || '', 10);
@@ -273,27 +276,258 @@ let remoteHasMoreChunks = root?.dataset?.hasmorechunks === '1' && remoteNextChun
 let remoteChunkRequestInFlight = false;
 let remoteChunkRequestedStart = -1;
 let remoteChunkRequestSeq = 0;
+let remoteChunkRequestedCount = 0;
 let pendingEnsureTarget = null;
 let nearBottom = () => false;
 let loadNextChunk = () => false;
 let primeChunkObserver = () => {};
+/** Jump virtual window so abs row is in DOM (used by keyboard/find). */
+let ensureBodyIndexVisible = (_bodyIndex) => {};
 
-const requestRemoteChunk = () => {
-  if (!remoteHasMoreChunks) return;
+const totalBodyRowsMeta = Number.parseInt(root?.dataset?.totalbodyrows || '0', 10) || 0;
+const bodyStartAbsMeta = Number.parseInt(root?.dataset?.bodystartabs || '0', 10) || 0;
+const includeVirtualRowMeta = root?.dataset?.includevirtualrow === '1';
+const metaNumColumns = Number.parseInt(root?.dataset?.numcolumns || '0', 10) || 0;
+const totalLogicalRows = totalBodyRowsMeta + (includeVirtualRowMeta ? 1 : 0);
+// Windowed mode once there is enough body data that append-all would jank.
+const USE_WINDOWED_SCROLL = totalLogicalRows >= 400 && !!table;
+
+const requestRemoteChunk = (startOverride, countOverride) => {
   if (remoteChunkRequestInFlight) return;
-  if (!Number.isInteger(remoteNextChunkStart) || remoteNextChunkStart < 0) {
-    remoteHasMoreChunks = false;
+  const start = Number.isInteger(startOverride) ? startOverride : remoteNextChunkStart;
+  if (!Number.isInteger(start) || start < 0) {
+    if (!USE_WINDOWED_SCROLL) remoteHasMoreChunks = false;
     return;
   }
+  if (!USE_WINDOWED_SCROLL && !remoteHasMoreChunks) return;
   remoteChunkRequestInFlight = true;
-  remoteChunkRequestedStart = remoteNextChunkStart;
+  remoteChunkRequestedStart = start;
+  remoteChunkRequestedCount = Number.isInteger(countOverride) && countOverride > 0 ? countOverride : 0;
   remoteChunkRequestSeq += 1;
-  vscode.postMessage({ type: 'requestChunk', start: remoteNextChunkStart, requestId: remoteChunkRequestSeq });
+  const payload = { type: 'requestChunk', start, requestId: remoteChunkRequestSeq };
+  if (remoteChunkRequestedCount > 0) payload.count = remoteChunkRequestedCount;
+  vscode.postMessage(payload);
 };
 
-if (csvChunks.length || remoteHasMoreChunks) {
+if (USE_WINDOWED_SCROLL) {
+  const tbody = table.tBodies[0];
+  const OVERSCAN = 40;
+  const MAX_WINDOW = 160; // hard cap on real <tr> rows in DOM
+  const cache = new Map(); // key `${start}:${count}` -> html
+  let rowHeight = getMinRowHeight();
+  let windowStart = 0; // body index of first real data row in window
+  let windowCount = 0;
+  let appliedStart = -1;
+  let appliedCount = -1;
+  let scrollRaf = 0;
+  let numCols = metaNumColumns;
+  if (!numCols && tbody) {
+    const sample = tbody.querySelector('tr:not(.csv-vspacer)');
+    numCols = sample ? sample.children.length : 1;
+  }
+  numCols = Math.max(1, numCols);
+
+  // Measure real row height from first painted row (compact is stable).
+  try {
+    const sampleRow = tbody && tbody.querySelector('tr:not(.csv-vspacer)');
+    if (sampleRow) {
+      const h = sampleRow.getBoundingClientRect().height;
+      if (h > 8) rowHeight = h;
+    }
+  } catch {}
+
+  const makeSpacer = (kind, heightPx) => {
+    const tr = document.createElement('tr');
+    tr.className = `csv-vspacer csv-vspacer-${kind}`;
+    tr.style.height = `${Math.max(0, Math.round(heightPx))}px`;
+    const td = document.createElement('td');
+    td.colSpan = numCols;
+    td.style.height = 'inherit';
+    tr.appendChild(td);
+    return tr;
+  };
+
+  const countDataRowsInHtml = (html) => {
+    if (!html) return 0;
+    // Cheap count: each data row is a <tr> (spacers are not in server HTML).
+    const matches = html.match(/<tr\b/gi);
+    return matches ? matches.length : 0;
+  };
+
+  const applyWindowHtml = (start, html) => {
+    if (!tbody) return;
+    const count = countDataRowsInHtml(html);
+    const topH = start * rowHeight;
+    const bottomH = Math.max(0, (totalLogicalRows - start - count) * rowHeight);
+    const holder = document.createElement('tbody');
+    holder.innerHTML = html || '';
+    const frag = document.createDocumentFragment();
+    frag.appendChild(makeSpacer('top', topH));
+    while (holder.firstChild) {
+      frag.appendChild(holder.firstChild);
+    }
+    frag.appendChild(makeSpacer('bottom', bottomH));
+    // Preserve scrollTop across re-render.
+    const keepY = scrollContainer ? scrollContainer.scrollTop : 0;
+    const keepX = scrollContainer ? scrollContainer.scrollLeft : 0;
+    tbody.replaceChildren(frag);
+    applySizeStateToRenderedCells(tbody);
+    if (table.classList.contains('row-compact')) {
+      applyCompactNewlineMarkers(tbody);
+    }
+    if (scrollContainer) {
+      scrollContainer.scrollTop = keepY;
+      scrollContainer.scrollLeft = keepX;
+    }
+    windowStart = start;
+    windowCount = count;
+    appliedStart = start;
+    appliedCount = count;
+    window.dispatchEvent(new Event('csvChunkLoaded'));
+  };
+
+  const fetchWindow = (start, count) => {
+    const s = Math.max(0, Math.min(start, Math.max(0, totalLogicalRows - 1)));
+    const c = Math.max(1, Math.min(count, MAX_WINDOW));
+    const key = `${s}:${c}`;
+    if (cache.has(key)) {
+      applyWindowHtml(s, cache.get(key));
+      return;
+    }
+    requestRemoteChunk(s, c);
+  };
+
+  const desiredWindow = () => {
+    if (!scrollContainer) return { start: 0, count: Math.min(MAX_WINDOW, totalLogicalRows) };
+    const viewRows = Math.max(8, Math.ceil(scrollContainer.clientHeight / Math.max(8, rowHeight)));
+    const count = Math.min(MAX_WINDOW, viewRows + OVERSCAN * 2);
+    let start = Math.floor(scrollContainer.scrollTop / Math.max(8, rowHeight)) - OVERSCAN;
+    start = Math.max(0, Math.min(start, Math.max(0, totalLogicalRows - count)));
+    return { start, count };
+  };
+
+  const syncWindow = (force = false) => {
+    const { start, count } = desiredWindow();
+    // Skip tiny moves to avoid thrashing while still tracking the viewport.
+    if (!force && appliedStart >= 0 && Math.abs(start - appliedStart) < Math.floor(OVERSCAN / 2) && count === appliedCount) {
+      return;
+    }
+    fetchWindow(start, count);
+  };
+
+  // Initial: keep first paint rows but install spacers so total scroll height is correct.
+  {
+    const existing = tbody ? Array.from(tbody.querySelectorAll('tr:not(.csv-vspacer)')) : [];
+    const initialCount = existing.length;
+    windowStart = 0;
+    windowCount = initialCount;
+    appliedStart = 0;
+    appliedCount = initialCount;
+    if (tbody && totalLogicalRows > initialCount) {
+      const bottomH = (totalLogicalRows - initialCount) * rowHeight;
+      tbody.appendChild(makeSpacer('bottom', bottomH));
+    }
+    // Cache initial HTML for 0:initialCount if possible
+    if (initialCount > 0 && tbody) {
+      const clone = existing.map(tr => tr.outerHTML).join('');
+      cache.set(`0:${initialCount}`, clone);
+    }
+  }
+
+  ensureBodyIndexVisible = (bodyIndex) => {
+    const idx = Math.max(0, Math.min(bodyIndex, Math.max(0, totalLogicalRows - 1)));
+    if (idx >= windowStart && idx < windowStart + windowCount) return;
+    const count = Math.min(MAX_WINDOW, Math.max(80, windowCount || 120));
+    const start = Math.max(0, Math.min(idx - Math.floor(count / 3), Math.max(0, totalLogicalRows - count)));
+    fetchWindow(start, count);
+  };
+
+  loadNextChunk = () => {
+    // Compatibility shim: advance one window "page" downward.
+    const next = Math.min(windowStart + Math.max(20, Math.floor(windowCount * 0.75)), Math.max(0, totalLogicalRows - 1));
+    ensureBodyIndexVisible(next);
+    return true;
+  };
+  window.__csvLoadNextChunk = loadNextChunk;
+  window.__csvEnsureBodyIndex = ensureBodyIndexVisible;
+
+  nearBottom = () => {
+    if (!scrollContainer) return false;
+    const remain = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+    return remain < rowHeight * 4;
+  };
+  primeChunkObserver = () => {};
+
+  const onScroll = () => {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      syncWindow(false);
+    });
+  };
+  if (scrollContainer) {
+    scrollContainer.addEventListener('scroll', onScroll, { passive: true });
+  } else {
+    window.addEventListener('scroll', onScroll, { passive: true });
+  }
+
+  // Handle window responses (shared chunkData path sets cache via hook below).
+  window.__csvOnWindowChunk = (start, html, countHint) => {
+    const count = countHint || countDataRowsInHtml(html) || remoteChunkRequestedCount || 80;
+    const key = `${start}:${count}`;
+    if (html) {
+      cache.set(key, html);
+      // Bound cache size
+      if (cache.size > 12) {
+        const first = cache.keys().next().value;
+        cache.delete(first);
+      }
+    }
+    // Only apply if this matches the latest desired window (or we have no window yet).
+    const desired = desiredWindow();
+    if (start === desired.start || Math.abs(start - desired.start) <= OVERSCAN || appliedStart < 0) {
+      applyWindowHtml(start, html || cache.get(key) || '');
+    }
+  };
+
+} else if (csvChunks.length || remoteHasMoreChunks) {
+  // ── Small-file append path (unchanged idea, lighter than full virtual) ──
   const tbody = table.tBodies[0];
   let loading = false;
+  let scrollLoadScheduled = false;
+
+  const afterChunkInserted = () => {
+    window.dispatchEvent(new Event('csvChunkLoaded'));
+    if (!csvChunks.length) requestRemoteChunk();
+    primeChunkObserver();
+  };
+
+  const appendChunkHtmlBatched = (html) => {
+    if (!tbody || !html) {
+      loading = false;
+      afterChunkInserted();
+      return;
+    }
+    const holder = document.createElement('tbody');
+    holder.innerHTML = html;
+    const rows = Array.from(holder.children);
+    let index = 0;
+    const BATCH = 48;
+    const step = () => {
+      const frag = document.createDocumentFragment();
+      const end = Math.min(index + BATCH, rows.length);
+      while (index < end) frag.appendChild(rows[index++]);
+      applySizeStateToRenderedCells(frag);
+      if (table.classList.contains('row-compact')) applyCompactNewlineMarkers(frag);
+      tbody.appendChild(frag);
+      if (index < rows.length) requestAnimationFrame(step);
+      else {
+        loading = false;
+        afterChunkInserted();
+      }
+    };
+    requestAnimationFrame(step);
+  };
 
   loadNextChunk = () => {
     if (loading || !tbody) return false;
@@ -302,56 +536,45 @@ if (csvChunks.length || remoteHasMoreChunks) {
       return false;
     }
     loading = true;
-    try {
-      const html = csvChunks.shift();
-      if (html) {
-        tbody.insertAdjacentHTML('beforeend', html);
-        applySizeStateToRenderedCells();
-        window.dispatchEvent(new Event('csvChunkLoaded'));
-      }
-      if (!csvChunks.length) {
-        requestRemoteChunk();
-      }
-      return !!html;
-    } finally {
+    const html = csvChunks.shift();
+    if (!html) {
       loading = false;
+      return false;
     }
+    appendChunkHtmlBatched(html);
+    return true;
   };
-  // Expose for restoration logic
   window.__csvLoadNextChunk = loadNextChunk;
 
-  nearBottom = () => {
+  nearBottom = (px = 600) => {
     if (!scrollContainer) return false;
-    const remain = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-    return remain < 300; // px threshold
+    return scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < px;
   };
 
-  const io = new IntersectionObserver((entries)=>{
+  const io = new IntersectionObserver((entries) => {
     if (entries[0] && entries[0].isIntersecting) {
       loadNextChunk();
       const last = tbody && tbody.querySelector('tr:last-child');
       if (last) io.observe(last);
     }
-  }, { root: scrollContainer || null, rootMargin: '0px 0px 300px 0px' });
+  }, { root: scrollContainer || null, rootMargin: '0px 0px 800px 0px' });
 
-  const prime = () => {
+  primeChunkObserver = () => {
     const last = tbody && tbody.querySelector('tr:last-child');
-    if (last) { io.observe(last); }
+    if (last) io.observe(last);
   };
-  primeChunkObserver = prime;
-  prime();
+  primeChunkObserver();
 
-  // Fallback: scroll-driven loader to ensure progress even if IO misses
   const scrollHandler = () => {
+    if (scrollLoadScheduled) return;
     if (!csvChunks.length && !remoteHasMoreChunks) return;
-    if (nearBottom()) {
-      // Load until we create headroom or exhaust currently available chunks
-      let guard = 10;
-      while (nearBottom() && guard-- > 0) {
-        if (!loadNextChunk()) break;
-      }
-      prime();
-    }
+    if (!nearBottom()) return;
+    scrollLoadScheduled = true;
+    requestAnimationFrame(() => {
+      scrollLoadScheduled = false;
+      if (!nearBottom()) return;
+      if (!loadNextChunk()) requestRemoteChunk();
+    });
   };
   if (scrollContainer) scrollContainer.addEventListener('scroll', scrollHandler, { passive: true });
   else window.addEventListener('scroll', scrollHandler, { passive: true });
@@ -366,13 +589,20 @@ const ensureTargetStep = () => {
     return;
   }
   pendingEnsureTarget.guard -= 1;
-  if (pendingEnsureTarget.guard <= 0 || (!remoteHasMoreChunks && !csvChunks.length)) {
+  if (pendingEnsureTarget.guard <= 0) {
     pendingEnsureTarget = null;
     return;
   }
-  if (!loadNextChunk()) {
-    requestRemoteChunk();
+  if (USE_WINDOWED_SCROLL) {
+    const bodyIndex = Math.max(0, row - bodyStartAbsMeta);
+    ensureBodyIndexVisible(bodyIndex);
+    return;
   }
+  if (!remoteHasMoreChunks && !csvChunks.length) {
+    pendingEnsureTarget = null;
+    return;
+  }
+  if (!loadNextChunk()) requestRemoteChunk();
 };
 window.addEventListener('csvChunkLoaded', ensureTargetStep);
 /* ───────── END VIRTUAL-SCROLL LOADER ───────── */
@@ -382,13 +612,19 @@ restoreState();
 setTimeout(() => { try { restoreState(); } catch {} }, 0);
 requestAnimationFrame(() => { try { restoreState(); } catch {} });
 
-// Track scroll to persist state (prefer container)
-if (scrollContainer) {
-  scrollContainer.addEventListener('scroll', () => {
+// Throttle scroll persistence — setState every wheel tick was a jank source on large tables.
+let persistScrollRaf = 0;
+const schedulePersistState = () => {
+  if (persistScrollRaf) return;
+  persistScrollRaf = requestAnimationFrame(() => {
+    persistScrollRaf = 0;
     persistState();
-  }, { passive: true });
+  });
+};
+if (scrollContainer) {
+  scrollContainer.addEventListener('scroll', schedulePersistState, { passive: true });
 } else {
-  window.addEventListener('scroll', () => { persistState(); }, { passive: true });
+  window.addEventListener('scroll', schedulePersistState, { passive: true });
 }
 
 // Persist on blur/visibility change and restore on focus/visibility
@@ -1158,6 +1394,13 @@ const ensureRenderedCellByCoords = (row, col) => {
   if (cell) {
     return cell;
   }
+  if (USE_WINDOWED_SCROLL) {
+    const bodyIndex = Math.max(0, row - bodyStartAbsMeta);
+    ensureBodyIndexVisible(bodyIndex);
+    pendingEnsureTarget = { row, col, guard: 40 };
+    cell = getRenderedCellByCoords(row, col);
+    return cell;
+  }
   if (typeof window.__csvLoadNextChunk !== 'function') {
     return null;
   }
@@ -1838,10 +2081,19 @@ window.addEventListener('message', event => {
       }
     }
     remoteChunkRequestInFlight = false;
+    const requestedCount = remoteChunkRequestedCount;
     remoteChunkRequestedStart = -1;
+    remoteChunkRequestedCount = 0;
     const html = typeof message.html === 'string' ? message.html : '';
     const nextStart = Number(message.nextStart);
     const done = !!message.done;
+
+    if (USE_WINDOWED_SCROLL && typeof window.__csvOnWindowChunk === 'function') {
+      window.__csvOnWindowChunk(start, html, requestedCount || 0);
+      if (pendingEnsureTarget) ensureTargetStep();
+      return;
+    }
+
     if (html.length > 0) {
       csvChunks.push(html);
     }

@@ -99,6 +99,31 @@ describe('Webview column filter panel', () => {
     assert.strictEqual(options[0].textContent, '1. Name');
   });
 
+  it('shows every column on focus (no 30-item cap; selected label is not a filter)', () => {
+    const labels = Array.from({ length: 40 }, (_, i) => `Col${String(i + 1).padStart(2, '0')}`);
+    h.destroy();
+    h = createHarness({
+      columns: 40,
+      addSerialIndex: true,
+      fontSize: 14,
+      rowHeightMode: 'compact',
+      header: { absRow: 0, cells: labels },
+      body: [{ absRow: 1, cells: labels.map((_, i) => `v${i}`) }],
+    });
+
+    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
+    // Simulate previously selected first column still in the input.
+    column.value = '1. Col01';
+    column.setAttribute('data-selected-col', '0');
+    column.focus();
+    column.dispatchEvent(new h.window.Event('focus', { bubbles: true }));
+
+    const options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
+    assert.strictEqual(options.length, 40, 'focus should list all columns, not a truncated prefix');
+    assert.strictEqual(options[0].textContent, '1. Col01');
+    assert.strictEqual(options[39].textContent, '40. Col40');
+  });
+
   it('renders chips and allows removing a single column filter', () => {
     addColumnFilter('0', 'alice');
     addColumnFilter('1', 'shanghai');

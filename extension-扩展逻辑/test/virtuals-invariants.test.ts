@@ -113,8 +113,15 @@ describe('Virtual row and cell invariants', () => {
     const { tableHtml, chunks } = CsvEditorProvider.__test.generateTableAndChunksRaw(rows, /*treatHeader*/ false, /*addSerialIndex*/ true, /*hiddenRows*/ 0);
 
     // Width should be based on total rows + virtual row (12346 -> 5 digits) plus 1ch padding => 6ch.
-    assert.ok(tableHtml.includes('min-width: 6ch; max-width: 6ch;'));
-    assert.ok(chunks.some(chunk => chunk.includes('min-width:6ch;max-width:6ch;') || chunk.includes('min-width: 6ch; max-width: 6ch;')));
+    // Compact inline styles omit spaces after ':' for smaller HTML.
+    assert.ok(
+      tableHtml.includes('min-width:6ch;max-width:6ch') ||
+      tableHtml.includes('min-width: 6ch; max-width: 6ch')
+    );
+    assert.ok(chunks.some(chunk =>
+      chunk.includes('min-width:6ch;max-width:6ch') ||
+      chunk.includes('min-width: 6ch; max-width: 6ch')
+    ));
   });
 
   it('link rendering respects clickableLinks toggle', () => {
@@ -137,8 +144,8 @@ describe('Virtual row and cell invariants', () => {
       /*hiddenRows*/ 0,
       /*clickableLinks*/ true
     );
-    assert.ok(rendered.tableHtml.includes('white-space: pre-wrap;'));
-    assert.ok(rendered.tableHtml.includes('overflow-wrap: anywhere;'));
+    // Wrap styling is shared via CSS (.cell-body); cells only keep title + content.
+    assert.ok(rendered.tableHtml.includes('class="cell-body"') || rendered.tableHtml.includes('class=\'cell-body\'') || rendered.tableHtml.includes('<div class="cell-body">'));
     assert.ok(rendered.tableHtml.includes('Hello\nWorld'));
     assert.match(rendered.tableHtml, /title="Hello[\r\n]+World"/);
   });
@@ -153,6 +160,9 @@ describe('Virtual row and cell invariants', () => {
       /*clickableLinks*/ true,
       /*columnColorMode*/ 'theme'
     );
-    assert.ok(themed.tableHtml.includes('color: var(--vscode-editor-foreground);'));
+    assert.ok(
+      themed.tableHtml.includes('color:var(--vscode-editor-foreground)') ||
+      themed.tableHtml.includes('color: var(--vscode-editor-foreground)')
+    );
   });
 });

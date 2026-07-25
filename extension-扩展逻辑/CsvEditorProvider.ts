@@ -63,6 +63,8 @@ class CsvEditorController {
   private currentWebviewPanel: vscode.WebviewPanel | undefined;
   private document!: CsvDocument;
   private separatorCache: { version: number; configKey: string; separator: string } | undefined;
+  /** Cache full Papa.parse by document version + separator — open/filter/chunk reuse it. */
+  private parseCache: { version: number; separator: string; data: string[][] } | undefined;
   private isDiffContext = false;
   private chunkRenderState: ChunkRenderState | undefined;
   private filterSortState: CsvFilterSortState = createDefaultFilterSortState();
@@ -150,7 +152,7 @@ class CsvEditorController {
           await this.pasteCells(e.text, e.anchorRow, e.anchorCol, e.selection);
           break;
         case 'requestChunk':
-          await this.requestChunk(e.start, e.requestId);
+          await this.requestChunk(e.start, e.requestId, e.count);
           break;
         case 'findMatches':
           await this.findMatches(e.requestId, e.query, e.options);
@@ -766,17 +768,17 @@ class CsvEditorController {
     }
   }
 
-  private renderChunkFromState(state: ChunkRenderState, start: number): ChunkResponse {
+  private renderChunkFromState(state: ChunkRenderState, start: number, rowCount?: number): ChunkResponse {
     if (!Number.isInteger(start) || start < 0) {
       return { html: '', nextStart: -1, done: true };
     }
     return renderCsvChunkFromState(state, start, {
       formatCellContent: (text, linkify) => this.formatCellContent(text, linkify),
       getMultilineCellTitleAttr: text => this.getMultilineCellTitleAttr(text)
-    });
+    }, rowCount);
   }
 
-  private async requestChunk(rawStart: unknown, requestId: unknown): Promise<void> {
+  private async requestChunk(rawStart: unknown, requestId: unknown, rawCount?: unknown): Promise<void> {
     if (!this.currentWebviewPanel || !this.chunkRenderState) {
       return;
     }
@@ -792,7 +794,9 @@ class CsvEditorController {
       });
       return;
     }
-    const response = this.renderChunkFromState(this.chunkRenderState, start);
+    const countNum = Number(rawCount);
+    const count = Number.isInteger(countNum) && countNum > 0 ? countNum : undefined;
+    const response = this.renderChunkFromState(this.chunkRenderState, start, count);
     this.currentWebviewPanel.webview.postMessage({
       type: 'chunkData',
       requestId,
@@ -858,8 +862,7 @@ class CsvEditorController {
     }
 
     const separator = this.getSeparator();
-    const parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
-    const data = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
+    const data = this.parseDocumentRows(separator);
     const hiddenRows = this.getHiddenRows();
     const offset = Math.min(Math.max(0, hiddenRows), data.length);
     const matches: Array<{ row: number; col: number; value: string }> = [];
@@ -1295,6 +1298,27 @@ class CsvEditorController {
 
   // ───────────── Webview Rendering ─────────────
 
+  private parseDocumentRows(separator: string): string[][] {
+    const version = this.document.version;
+    if (
+      this.parseCache &&
+      this.parseCache.version === version &&
+      this.parseCache.separator === separator
+    ) {
+      return this.parseCache.data;
+    }
+    let raw: string[][] = [];
+    try {
+      const parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
+      raw = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
+    } catch (error) {
+      console.error('CSV: Error parsing CSV content', error);
+      raw = [];
+    }
+    this.parseCache = { version, separator, data: raw };
+    return raw;
+  }
+
   private updateWebviewContent() {
     if (!this.currentWebviewPanel) return;
 
@@ -1303,15 +1327,7 @@ class CsvEditorController {
     const addSerialIndex = CsvEditorProvider.getSerialIndexForUri(this.context, this.document.uri);
     const separator = this.getSeparator();
     const hiddenRows = this.getHiddenRows();
-
-    let parsed;
-    try {
-      parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
-      console.log(`CSV: Parsed CSV data with ${parsed.data.length} rows`);
-    } catch (error) {
-      console.error('CSV: Error parsing CSV content', error);
-      parsed = { data: [] };
-    }
+    const rawData = this.parseDocumentRows(separator);
 
     const fontFamily =
       config.get<string>('fontFamily') ||
@@ -1322,7 +1338,6 @@ class CsvEditorController {
     );
 
     const cellPadding = config.get<number>('cellPadding', 4);
-    const rawData = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
     const treatHeader = this.getEffectiveHeader(rawData, hiddenRows);
     const offset = Math.min(Math.max(0, hiddenRows), rawData.length);
     const data = this.applyFilterSort(rawData, offset, treatHeader);
@@ -1378,7 +1393,12 @@ class CsvEditorController {
       rowHeightMode,
       columnLabels,
       columnFilters: this.filterSortState.columnFilters,
-      globalSearch: this.filterSortState.globalSearch
+      globalSearch: this.filterSortState.globalSearch,
+      totalBodyRows: chunkState?.allRowsCount ?? 0,
+      bodyStartAbs: chunkState?.startAbs ?? 0,
+      chunkRows: chunkState?.chunkRows ?? 0,
+      numColumns: chunkState?.numColumns ?? 0,
+      includeVirtualRow: !!(chunkState?.includeTrailingEmptyRow)
     });
   }
 
@@ -1446,8 +1466,18 @@ class CsvEditorController {
     columnLabels: string[];
     columnFilters: Record<string, CsvColumnFilterCondition | string>;
     globalSearch: string;
+    totalBodyRows?: number;
+    bodyStartAbs?: number;
+    chunkRows?: number;
+    numColumns?: number;
+    includeVirtualRow?: boolean;
   }): string {
     const { webview, nonce, fontFamily, fontSize, cellPadding, separator, tableHtml, chunksJson, extraColumnColorCss, nextChunkStart, hasRemoteChunks, mouseWheelZoomEnabled, mouseWheelZoomInvert, rowHeightMode, columnLabels, columnFilters, globalSearch } = args;
+    const totalBodyRows = Math.max(0, Math.floor(args.totalBodyRows ?? 0));
+    const bodyStartAbs = Math.max(0, Math.floor(args.bodyStartAbs ?? 0));
+    const metaChunkRows = Math.max(0, Math.floor(args.chunkRows ?? 0));
+    const metaNumColumns = Math.max(0, Math.floor(args.numColumns ?? 0));
+    const includeVirtualRow = args.includeVirtualRow ? '1' : '0';
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
     // Build script URI using file path for compatibility (older APIs may lack Uri.joinPath)
     const scriptUri = webview.asWebviewUri(
@@ -1479,8 +1509,22 @@ class CsvEditorController {
       .table-container { overflow: auto; height: 100vh; }
       table { border-collapse: collapse; width: max-content; }
       th, td { padding: ${cellPadding}px 8px; border: 1px solid ${isDark ? '#555' : '#ccc'}; font-size: inherit; vertical-align: top; }
-      th { background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      th { background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; position: sticky; top: 0; z-index: 3; }
       td { overflow: hidden; }
+      /* Off-screen rows skip work; virtual scroll keeps DOM small on top of this. */
+      tbody tr {
+        content-visibility: auto;
+        contain-intrinsic-size: auto ${Math.max(22, Math.round(fontSize * 1.6))}px;
+      }
+      tbody tr.csv-vspacer td {
+        padding: 0 !important;
+        border: none !important;
+        height: inherit;
+        line-height: 0;
+        content-visibility: visible;
+      }
+      td.csv-td { max-width: 100ch; overflow: hidden; }
+      td.csv-td-serial { color: #888; max-width: none; }
       td .cell-body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
       table.row-compact td .cell-body { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-height: ${Math.max(18, Math.round(fontSize * 1.4))}px; }
       td.editing .cell-body { max-height: none !important; overflow: visible !important; white-space: pre-wrap !important; }
@@ -1724,7 +1768,7 @@ class CsvEditorController {
       #csvFloatPanel > * { flex:0 0 auto; }
       .csv-column-combobox { position:relative;display:inline-flex;align-items:center; }
       #csvColumnFilterColumn { box-sizing:border-box;height:24px;width:170px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;padding:0 6px;outline:none; }
-      #csvColumnFilterOptions { position:fixed;z-index:1250;width:min(320px,calc(100vw - 32px));max-height:220px;overflow:auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.98)':'rgba(255,255,255,0.98)'};box-shadow:0 4px 12px rgba(0,0,0,0.28);padding:4px; }
+      #csvColumnFilterOptions { position:fixed;z-index:1250;width:min(360px,calc(100vw - 32px));max-height:min(50vh,420px);overflow:auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.98)':'rgba(255,255,255,0.98)'};box-shadow:0 4px 12px rgba(0,0,0,0.28);padding:4px; }
       #csvColumnFilterOptions[hidden] { display:none !important; }
       .csv-column-option { display:block;width:100%;border:0;border-radius:4px;background:transparent;color:${isDark?'#ddd':'#222'};text-align:left;cursor:pointer;font:inherit;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
       .csv-column-option:hover,
@@ -1736,7 +1780,7 @@ class CsvEditorController {
     </style>
   </head>
   <body>
-    <div id="csv-root" class="table-container" data-sepcode="${sepCode}" data-fontsize="${fontSize}" data-wheelzoomenabled="${mouseWheelZoomEnabled ? '1' : '0'}" data-wheelzoominvert="${mouseWheelZoomInvert ? '1' : '0'}" data-nextchunkstart="${nextChunkStart >= 0 ? nextChunkStart : ''}" data-hasmorechunks="${hasRemoteChunks ? '1' : '0'}">
+    <div id="csv-root" class="table-container" data-sepcode="${sepCode}" data-fontsize="${fontSize}" data-wheelzoomenabled="${mouseWheelZoomEnabled ? '1' : '0'}" data-wheelzoominvert="${mouseWheelZoomInvert ? '1' : '0'}" data-nextchunkstart="${nextChunkStart >= 0 ? nextChunkStart : ''}" data-hasmorechunks="${hasRemoteChunks ? '1' : '0'}" data-totalbodyrows="${totalBodyRows}" data-bodystartabs="${bodyStartAbs}" data-chunkrows="${metaChunkRows}" data-numcolumns="${metaNumColumns}" data-includevirtualrow="${includeVirtualRow}">
       ${tableHtml.replace('<table>', `<table class="row-${rowHeightMode}">`)}
     </div>
 
@@ -1828,7 +1872,6 @@ class CsvEditorController {
         widths[i] = Math.max(widths[i], (row[i] || '').length);
       }
     }
-    console.log(`CSV: Column widths: ${widths}`);
     return widths;
   }
 
@@ -1910,14 +1953,7 @@ class CsvEditorController {
     const hiddenRows = this.getHiddenRows();
     const clickableLinks = config.get<boolean>('clickableLinks', true);
 
-    let parsed;
-    try {
-      parsed = Papa.parse(this.document.text, { dynamicTyping: false, delimiter: separator });
-    } catch {
-      parsed = { data: [] };
-    }
-
-    const rawData = this.trimTrailingEmptyRows((parsed.data || []) as string[][]);
+    const rawData = this.parseDocumentRows(separator);
     const treatHeader = this.getEffectiveHeader(rawData, hiddenRows);
 
     const offset = Math.min(Math.max(0, hiddenRows), rawData.length);
@@ -1945,6 +1981,13 @@ class CsvEditorController {
       0
     );
     this.chunkRenderState = chunkMeta.chunkState;
+
+    // Large / windowed tables: full re-render keeps virtual-scroll metadata in sync.
+    const largeBody = (chunkMeta.chunkState?.allRowsCount ?? 0) >= 400;
+    if (largeBody || chunkMeta.hasRemoteChunks) {
+      this.updateWebviewContent();
+      return;
+    }
 
     const bodyStart = treatHeader ? offset + 1 : offset;
     const bodyRows = data.slice(bodyStart);

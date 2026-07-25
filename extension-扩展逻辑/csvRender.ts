@@ -31,11 +31,15 @@ export type CsvTableRenderResult = {
   chunkState: ChunkRenderState | undefined;
 };
 
-// Larger initial page: users complained that only ~1000 rows felt available.
-// Wide tables still scale down via MAX_CELLS_PER_CHUNK so a single chunk stays bounded.
-const BASE_CHUNK_ROWS = 3000;
-const MAX_CELLS_PER_CHUNK = 50000;
+// Initial + stream page size. Keep modest so:
+// - open stays fast (less HTML)
+// - scroll appends don't stall the main thread (~20k cells/chunk was janky on 64-col files)
+// Wide tables scale down via MAX_CELLS_PER_CHUNK (cells ≈ rows × cols).
+const BASE_CHUNK_ROWS = 800;
+const MAX_CELLS_PER_CHUNK = 10000;
 const MIN_CHUNK_ROWS = 10;
+/** Only scan this many body rows for type coloring / width estimation. */
+const META_SAMPLE_ROWS = 400;
 
 function cellBorder(isDark: boolean): string {
   return isDark ? '#555' : '#ccc';
@@ -51,18 +55,24 @@ function renderDataCell(
   const rawValue = row[col] || '';
   const safe = helpers.formatCellContent(rawValue, state.clickableLinks);
   const titleAttr = helpers.getMultilineCellTitleAttr(rawValue);
-  return `<td tabindex="0" style="min-width: ${Math.min(state.columnWidths[col] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${cellBorder(state.isDark)}; color: ${state.columnColors[col]}; overflow: hidden;"${titleAttr} data-row="${absRow}" data-col="${col}"><div class="cell-body" style="white-space: pre-wrap; overflow-wrap: anywhere;">${safe}</div></td>`;
+  // Shared border/overflow/cell-body styles live in webview CSS (.csv-td / .cell-body).
+  // Keep only per-cell min-width + color here to cut HTML size on wide tables.
+  const minW = Math.min(state.columnWidths[col] || 0, 100);
+  return `<td class="csv-td" tabindex="0" style="min-width:${minW}ch;color:${state.columnColors[col]}"${titleAttr} data-row="${absRow}" data-col="${col}"><div class="cell-body">${safe}</div></td>`;
 }
 
 function renderSerialCell(absRow: number, displayIdx: number, state: Pick<ChunkRenderState, 'serialIndexWidthCh' | 'isDark'>): string {
-  return `<td tabindex="0" style="min-width: ${state.serialIndexWidthCh}ch; max-width: ${state.serialIndexWidthCh}ch; border: 1px solid ${cellBorder(state.isDark)}; color: #888;" data-row="${absRow}" data-col="-1">${displayIdx}</td>`;
+  return `<td class="csv-td csv-td-serial" tabindex="0" style="min-width:${state.serialIndexWidthCh}ch;max-width:${state.serialIndexWidthCh}ch" data-row="${absRow}" data-col="-1">${displayIdx}</td>`;
 }
 
 function renderVirtualRow(absRow: number, displayIdx: number, state: ChunkRenderState): string {
   const idxCell = state.addSerialIndex ? renderSerialCell(absRow, displayIdx, state) : '';
   const dataCells = Array.from(
     { length: state.numColumns },
-    (_, i) => `<td tabindex="0" style="min-width: ${Math.min(state.columnWidths[i] || 0, 100)}ch; max-width: 100ch; border: 1px solid ${cellBorder(state.isDark)}; color: ${state.columnColors[i]}; overflow: hidden;" data-row="${absRow}" data-col="${i}"></td>`
+    (_, i) => {
+      const minW = Math.min(state.columnWidths[i] || 0, 100);
+      return `<td class="csv-td" tabindex="0" style="min-width:${minW}ch;color:${state.columnColors[i]}" data-row="${absRow}" data-col="${i}"></td>`;
+    }
   ).join('');
   return `<tr>${idxCell}${dataCells}</tr>`;
 }
@@ -70,11 +80,14 @@ function renderVirtualRow(absRow: number, displayIdx: number, state: ChunkRender
 export function renderChunkFromState(
   state: ChunkRenderState,
   start: number,
-  helpers: Pick<CsvRenderHelpers, 'formatCellContent' | 'getMultilineCellTitleAttr'>
+  helpers: Pick<CsvRenderHelpers, 'formatCellContent' | 'getMultilineCellTitleAttr'>,
+  /** Optional window size for virtual scroll (defaults to state.chunkRows). */
+  rowCount?: number
 ): ChunkResponse {
+  const limit = Math.max(1, Math.floor(rowCount ?? state.chunkRows));
   if (start < state.allRowsCount) {
-    const end = Math.min(start + state.chunkRows, state.allRowsCount);
-    const html = state.allRows.slice(start, end).map((row, localR) => {
+    const end = Math.min(start + limit, state.allRowsCount);
+    let html = state.allRows.slice(start, end).map((row, localR) => {
       const absRow = state.startAbs + start + localR;
       const displayIdx = start + localR + 1;
       let cells = '';
@@ -84,6 +97,15 @@ export function renderChunkFromState(
       const idxCell = state.addSerialIndex ? renderSerialCell(absRow, displayIdx, state) : '';
       return `<tr>${idxCell}${cells}</tr>`;
     }).join('');
+
+    // If this window reaches the data end and a trailing virtual row is needed,
+    // append it when the caller asked for enough rows to include it.
+    if (end >= state.allRowsCount && state.includeTrailingEmptyRow && (start + limit) > state.allRowsCount) {
+      const virtualAbs = state.startAbs + state.allRowsCount;
+      const displayIdx = state.allRowsCount + 1;
+      html += renderVirtualRow(virtualAbs, displayIdx, state);
+      return { html, nextStart: -1, done: true };
+    }
 
     if (end < state.allRowsCount) {
       return { html, nextStart: end, done: false };
@@ -134,7 +156,14 @@ export function generateTableAndChunks(options: CsvTableRenderOptions): CsvTable
   let numColumns = visibleForWidth.reduce((max, row) => Math.max(max, row.length), 0);
   if (numColumns === 0) numColumns = 1;
 
-  const columnData = Array.from({ length: numColumns }, (_, i) => bodyData.map(row => row[i] || ''));
+  // Sample only — full-column scans on 50MB / 30k+ rows dominate open time.
+  const bodySample = bodyData.length > META_SAMPLE_ROWS
+    ? bodyData.slice(0, META_SAMPLE_ROWS)
+    : bodyData;
+  const widthSample = visibleForWidth.length > META_SAMPLE_ROWS
+    ? visibleForWidth.slice(0, META_SAMPLE_ROWS)
+    : visibleForWidth;
+  const columnData = Array.from({ length: numColumns }, (_, i) => bodySample.map(row => row[i] || ''));
   const columnTypes = columnData.map(col => helpers.estimateColumnDataType(col));
   const useThemeForeground = columnColorMode === 'theme';
   const palette = columnColorPalette === 'cool'
@@ -143,7 +172,7 @@ export function generateTableAndChunks(options: CsvTableRenderOptions): CsvTable
   const columnColors = useThemeForeground
     ? Array.from({ length: numColumns }, () => 'var(--vscode-editor-foreground)')
     : columnTypes.map((type, i) => helpers.getColumnColor(type, isDark, i, palette));
-  const columnWidths = helpers.computeColumnWidths(visibleForWidth);
+  const columnWidths = helpers.computeColumnWidths(widthSample);
 
   const allRows = headerFlag ? data.slice(offset + 1) : data.slice(offset);
   const allRowsCount = allRows.length;

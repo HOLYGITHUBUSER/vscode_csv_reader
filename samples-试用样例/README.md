@@ -1,10 +1,44 @@
 # 测试示例 CSV
 
-这里保留一个**完整压力测试大表格**，直接在 VS Code / Cursor / Windsurf 里双击打开即可体验。
+本目录放**手工试用**样例（打开扩展直接点）。自动化断言请用 `extension-扩展逻辑/test/` 下的 fixture，不要改那些。
 
-- [`ultimate-50mb-完整压力测试.csv`](ultimate-50mb-%E5%AE%8C%E6%95%B4%E5%8E%8B%E5%8A%9B%E6%B5%8B%E8%AF%95.csv)（约 50 MiB，64 列）
-  - 覆盖长文本、中文 / 日文 / emoji、URL、日期时间、数字、布尔值、空值、引号、逗号、制表符、JSON、HTML / Markdown 片段、路径，以及少量多行单元格。
-  - 用来集中测试大文件加载、分块渲染、横向滚动、列宽估算、排序、过滤、查找替换、折行、链接点击和编辑保存。
+## 推荐：日常验收（先开这个）
 
-> 自动化测试（`npm test`）使用的是 [`extension-扩展逻辑/test/super_example.csv`](../extension-扩展逻辑/test/super_example.csv) 与 [`extension-扩展逻辑/test/complex_test.csv`](../extension-扩展逻辑/test/complex_test.csv)（严格断言，不建议改动）。
-> 本目录只放手工试用的大样例，不作为自动化测试断言基线。
+| 文件 | 规模 | 用途 |
+| --- | --- | --- |
+| [`smoke-日常验收.csv`](smoke-日常验收.csv) | ~400 行 · 15 列 · ~70 KB | **改完后默认试用**。打开快，覆盖排序 / 列过滤 / 查找 / 编辑常见路径 |
+
+### 建议手测清单（对着 `smoke-日常验收.csv`）
+
+1. **打开**：双击文件，表格首屏正常出现  
+2. **滚动**：纵向滚一段，行号与数据不错位  
+3. **排序**：点 `amount` / `hire_date` / `priority` 列头，升序 → 降序 → 取消  
+4. **列过滤**：`department = 财务` 或 `priority = P0`；应能看到「列过滤-财务高优」等行  
+5. **查找**：搜 `UNIQUE_FIND_TOKEN_ALPHA`，应定位到「测试-全局搜索关键词」  
+6. **编辑**：改一个单元格 → 保存 → 重开仍在  
+7. **特殊字符**：含逗号名字、多行 `notes`、emoji 行不崩版
+
+刻意埋的标记行（方便断言「找没找到」）：
+
+- `UNIQUE_FIND_TOKEN_ALPHA`（全局搜索）
+- `FILTER_DEPT_FINANCE_P0`（财务 + P0 过滤）
+- `id=403` 名字含逗号、notes 含嵌套引号
+
+## 其它样例
+
+| 文件 | 规模 | 用途 |
+| --- | --- | --- |
+| [`complex_test.csv`](complex_test.csv) | 很小 | 边界：多行单元格、中日德俄阿、emoji、公式注入串、HTML 等 |
+| [`super_example.csv`](super_example.csv) | ~1k 行 | 带 meta 头 + 多类型列，中等体量交互 |
+| [`ultimate-50mb-完整压力测试.csv`](ultimate-50mb-%E5%AE%8C%E6%95%B4%E5%8E%8B%E5%8A%9B%E6%B5%8B%E8%AF%95.csv) | ~50 MiB · 64 列 · 4 万行 | 大文件：分块加载、横向滚动、性能压测 |
+
+## 什么时候用哪个
+
+```text
+日常改完烟测     → smoke-日常验收.csv
+边界字符/引号    → complex_test.csv
+中等数据交互     → super_example.csv
+大文件/性能      → ultimate-50mb-完整压力测试.csv
+```
+
+> 本目录不作为 `npm test` 的断言基线；改 smoke 数据不影响自动测试。
