@@ -243,16 +243,16 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "compile:bump": "python3 script-构建脚本/bump-version-版本递增.py",
-    "package:force": "node script-构建脚本/package-vsix-打包.cjs",
+    "compile:bump": "python3 03-script-构建脚本/bump-version-版本递增.py",
+    "package:force": "node 03-script-构建脚本/package-vsix-打包.cjs",
     "vscode:prepublish": "npm run compile",
-    "lint": "eslint 'extension-扩展逻辑/**/*.ts'",
-    "package": "python3 script-构建脚本/bump-version-版本递增.py --package",
+    "lint": "eslint '01-extension-扩展逻辑/**/*.ts'",
+    "package": "python3 03-script-构建脚本/bump-version-版本递增.py --package",
     "test": "npm run compile && node --test out/test/**/*.test.js",
     "test:webview": "npm run compile && node --test out/test/webview-*.test.js",
-    "test:e2e": "playwright test --config e2e-浏览器测试/playwright.config.ts",
+    "test:e2e": "playwright test --config 05-e2e-浏览器测试/playwright.config.ts",
     "test:full": "npm test && npm run test:e2e && npm run package",
-    "install:cursor": "cursor --install-extension artifacts-安装包/csv-custom-pro-latest.vsix --force"
+    "install:cursor": "cursor --install-extension 07-artifacts-安装包/csv-custom-pro-latest.vsix --force"
   },
   "dependencies": {
     "papaparse": "^5.5.3"

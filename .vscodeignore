@@ -2,13 +2,13 @@
 .vscode-test/**
 .cursor/**
 .github/**
-extension-扩展逻辑/**
-script-构建脚本/**
-backup-归档旧文件/**
-docs-项目文档/**
-artifacts-安装包/**
-samples-试用样例/**
-e2e-浏览器测试/**
+01-extension-扩展逻辑/**
+03-script-构建脚本/**
+99-backup-归档旧文件/**
+06-docs-项目文档/**
+07-artifacts-安装包/**
+04-samples-试用样例/**
+05-e2e-浏览器测试/**
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
@@ -18,5 +18,5 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 out/test/**
-out/extension-扩展逻辑/**
+out/01-extension-扩展逻辑/**
 out/ai-generated-tests-ai生成测试.js
