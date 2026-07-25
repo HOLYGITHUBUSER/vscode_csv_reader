@@ -3,7 +3,7 @@
  */
 import assert from 'assert';
 import { describe, it, beforeEach, afterEach } from 'node:test';
-import { createHarness, Harness } from './helpers/webview-harness';
+import { createHarness, Harness } from './helpers/webview-harness-脚手架';
 
 describe('Webview row-height mode newline rendering', () => {
   let h: Harness;

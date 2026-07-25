@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Package vsix as 07-artifacts-安装包/<name>-<version>-<YYYYMMDD-HHmmss>.vsix,
- * plus a stable <name>-latest.vsix copy and a BUILD-INFO.md audit file. */
+ * plus a stable <name>-latest.vsix copy and a build-info-构建信息.md audit file. */
 
 const { execFileSync } = require("child_process");
 const crypto = require("crypto");
@@ -22,7 +22,7 @@ const base = `${pkg.name}-${pkg.version}-${stampFile}.vsix`;
 const outFile = path.join(outDir, base);
 const latestBase = `${pkg.name}-latest.vsix`;
 const latestFile = path.join(outDir, latestBase);
-const buildInfoFile = path.join(outDir, "BUILD-INFO.md");
+const buildInfoFile = path.join(outDir, "build-info-构建信息.md");
 
 fs.mkdirSync(outDir, { recursive: true });
 

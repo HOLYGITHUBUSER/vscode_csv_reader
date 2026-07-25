@@ -8,7 +8,7 @@
  */
 import assert from 'assert';
 import { describe, it, before, after } from 'node:test';
-import { createHarness, Harness } from './helpers/webview-harness';
+import { createHarness, Harness } from './helpers/webview-harness-脚手架';
 
 describe('Webview row-resize interactions', () => {
   let h: Harness;

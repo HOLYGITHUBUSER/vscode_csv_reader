@@ -246,9 +246,9 @@
     "vscode:prepublish": "npm run compile",
     "lint": "eslint '01-extension-扩展逻辑/**/*.ts'",
     "package": "python3 03-script-构建脚本/bump-version-版本递增.py --package",
-    "test": "npm run compile && node --test out/test/**/*.test.js",
-    "test:webview": "npm run compile && node --test out/test/webview-*.test.js",
-    "test:e2e": "playwright test --config 05-e2e-浏览器测试/playwright.config.ts",
+    "test": "npm run compile && node --test \"out/test-单元测试/**/*.test.js\"",
+    "test:webview": "npm run compile && node --test \"out/test-单元测试/webview-*.test.js\"",
+    "test:e2e": "playwright test --config 05-e2e-浏览器测试/playwright-配置.ts",
     "test:full": "npm test && npm run test:e2e && npm run package",
     "install:cursor": "cursor --install-extension 07-artifacts-安装包/csv-custom-pro-latest.vsix --force"
   },

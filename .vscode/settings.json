@@ -20,6 +20,5 @@
     "07-artifacts-安装包/**/*.vsix": true,
     "05-e2e-浏览器测试/test-results": true
   },
-  "typescript.tsc.autoDetect": "off",
-  "typescript.tsdk": "node_modules/typescript/lib"
+  "typescript.tsc.autoDetect": "off"
 }

@@ -7,7 +7,7 @@
 ## 最新成品
 
 - 安装包：[`07-artifacts-安装包/csv-custom-pro-latest.vsix`](07-artifacts-安装包/csv-custom-pro-latest.vsix)
-- 构建信息：[`07-artifacts-安装包/BUILD-INFO.md`](07-artifacts-安装包/BUILD-INFO.md)
+- 构建信息：[`07-artifacts-安装包/build-info-构建信息.md`](07-artifacts-安装包/build-info-构建信息.md)
 
 ## 试用示例
 

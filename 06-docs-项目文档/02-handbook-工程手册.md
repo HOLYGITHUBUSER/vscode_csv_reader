@@ -15,7 +15,7 @@ vscode_csv_reader/
 ├─ 04-samples-试用样例/      手测 CSV
 ├─ 05-e2e-浏览器测试/        Playwright
 ├─ 06-docs-项目文档/         本目录（仅 2 份文档）
-├─ 07-artifacts-安装包/      latest.vsix + BUILD-INFO
+├─ 07-artifacts-安装包/      latest.vsix + build-info-构建信息
 ├─ package.json              必须在根
 └─ README.md
 ```
@@ -44,7 +44,7 @@ vscode_csv_reader/
 | `csvCellFormat.ts` | escape / 链接 / 类型色 / full-text |
 | `csvSeparator.ts` | 分隔符 |
 | `csvTypes.ts` | 类型 |
-| `test/` | Node + jsdom 测试 |
+| `test-单元测试/` | Node + jsdom 测试 |
 
 ### 02-webview
 
@@ -111,15 +111,15 @@ npm run install:cursor      # 装 latest 到 Cursor
 | 表格交互 | `02-webview-…/webview-main.js` |
 | 过滤 UI | `webview-filter-panel.js` |
 | 查找替换 | `webview-find-replace.js` |
-| jsdom 脚手架 | `01-extension-…/test/helpers/webview-harness.ts` |
+| jsdom 脚手架 | `01-extension-…/test-单元测试/helpers/webview-harness-脚手架.ts` |
 | E2E 脚手架 | `05-e2e-…/harness.ts` |
 
 ### 测试分层
 
 ```text
-慢  Playwright E2E     05-e2e-浏览器测试/*.spec.ts
-    jsdom webview      01-extension-…/test/webview-*.test.ts
-快  Node 纯函数        01-extension-…/test/*.test.ts
+慢  Playwright E2E     05-e2e-浏览器测试/*-*.spec.ts
+    jsdom webview      01-extension-…/test-单元测试/webview-*.test.ts
+快  Node 纯函数        01-extension-…/test-单元测试/*.test.ts
 ```
 
 ### 手测样例

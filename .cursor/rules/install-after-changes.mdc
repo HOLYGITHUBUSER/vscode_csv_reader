@@ -10,7 +10,7 @@ After substantive code changes to this extension, verify with the relevant tests
 For visual changes (table layout, row height, wrapping, selection, buttons), run the relevant Playwright spec and review screenshots before packaging. For row-height or multiline-cell changes, use:
 
 ```bash
-npm run test:e2e -- 05-e2e-浏览器测试/row-height-visual.spec.ts
+npm run test:e2e -- 05-e2e-浏览器测试/row-height-行高视觉.spec.ts
 ```
 
 Review the generated screenshots under `05-e2e-浏览器测试/visual-review/` before reporting the visual change as done.

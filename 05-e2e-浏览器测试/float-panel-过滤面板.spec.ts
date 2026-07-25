@@ -11,7 +11,7 @@
  */
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
-import { writeHarnessHtml } from './harness';
+import { writeHarnessHtml } from './harness-脚手架';
 
 const cfg = {
   columns: 3,
