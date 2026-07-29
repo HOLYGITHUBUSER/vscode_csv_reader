@@ -1,0 +1,46 @@
+name: Build and commit VSIX
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '07-artifacts-安装包/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-vsix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build VSIX
+        run: npm run package:force
+
+      - name: Commit generated VSIX
+        shell: bash
+        run: |
+          if git diff --quiet -- '07-artifacts-安装包' && [ -z "$(git status --short -- '07-artifacts-安装包')" ]; then
+            echo 'No VSIX artifact changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '07-artifacts-安装包'
+          git commit -m 'build: update VSIX artifact'
+          git push origin HEAD:main
