@@ -1,0 +1,159 @@
+name: Add CSV Refresh Button
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-refresh-button.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Add refresh host action and webview button
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          provider = Path('01-extension-扩展逻辑/CsvEditorProvider.ts')
+          text = provider.read_text(encoding='utf-8')
+
+          switch_anchor = """        case 'save':
+          await this.handleSave();
+          break;
+"""
+          switch_replacement = switch_anchor + """        case 'refreshFromDisk':
+          await this.refreshFromDisk();
+          break;
+"""
+          if "case 'refreshFromDisk':" not in text:
+              if switch_anchor not in text:
+                  raise SystemExit('save switch anchor not found')
+              text = text.replace(switch_anchor, switch_replacement, 1)
+
+          method_anchor = """  private forceReload() {
+    if (!this.currentWebviewPanel) return;
+    const panel = this.currentWebviewPanel;
+    // First, blank the DOM to ensure a full script/style reinit on next set
+    panel.webview.html = '<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body></body></html>';
+    setTimeout(() => {
+      try {
+        this.updateWebviewContent();
+      } catch (err) {
+        console.error('CSV: forceReload failed', err);
+      }
+    }, 0);
+  }
+"""
+          refresh_method = method_anchor + """
+
+  private async refreshFromDisk(): Promise<void> {
+    const fileName = path.basename(this.document.uri.fsPath || this.document.uri.path || this.document.uri.toString());
+    if (this.document.isDirty) {
+      const confirm = await vscode.window.showWarningMessage(
+        `CSV: \"${fileName}\" has unsaved changes. Refreshing will discard them and reload the file from disk.`,
+        { modal: true },
+        'Discard and Refresh'
+      );
+      if (confirm !== 'Discard and Refresh') return;
+    }
+
+    try {
+      this.isUpdatingDocument = true;
+      await this.document.revert();
+      this.parseCache = undefined;
+      this.separatorCache = undefined;
+      this.sortSnapshotText = null;
+      this.filterSortState = createDefaultFilterSortState();
+      this.updateWebviewContent();
+      vscode.window.showInformationMessage(`CSV: Refreshed \"${fileName}\" from disk.`);
+    } catch (err) {
+      console.error('CSV: refresh from disk failed', err);
+      vscode.window.showErrorMessage(`CSV: Failed to refresh \"${fileName}\" from disk.`);
+    } finally {
+      this.isUpdatingDocument = false;
+    }
+  }
+"""
+          if 'private async refreshFromDisk()' not in text:
+              if method_anchor not in text:
+                  raise SystemExit('forceReload method anchor not found')
+              text = text.replace(method_anchor, refresh_method, 1)
+
+          provider.write_text(text, encoding='utf-8')
+
+          panel = Path('02-webview-表格界面/webview-filter-panel.js')
+          js = panel.read_text(encoding='utf-8')
+          declaration_anchor = """  const columnClearBtn = document.getElementById('csvColumnFilterClear');
+"""
+          declaration_replacement = declaration_anchor + """  const refreshBtn = document.createElement('button');
+  refreshBtn.type = 'button';
+  refreshBtn.id = 'csvRefreshFromDisk';
+  refreshBtn.textContent = '刷新';
+  refreshBtn.title = '从磁盘重新读取当前 CSV';
+  refreshBtn.setAttribute('aria-label', '从磁盘重新读取当前 CSV');
+  if (rhBtn && rhBtn.parentElement) {
+    rhBtn.parentElement.insertBefore(refreshBtn, rhBtn);
+  } else if (columnToggle && columnToggle.parentElement) {
+    columnToggle.parentElement.appendChild(refreshBtn);
+  }
+"""
+          if "csvRefreshFromDisk" not in js:
+              if declaration_anchor not in js:
+                  raise SystemExit('filter panel declaration anchor not found')
+              js = js.replace(declaration_anchor, declaration_replacement, 1)
+
+          listener_anchor = """  if (searchInput) {
+"""
+          listener_replacement = """  refreshBtn.addEventListener('click', () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '刷新中…';
+    bridge.postMessage({ type: 'refreshFromDisk' });
+    setTimeout(() => {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '刷新';
+    }, 1500);
+  });
+
+""" + listener_anchor
+          if "bridge.postMessage({ type: 'refreshFromDisk' })" not in js:
+              if listener_anchor not in js:
+                  raise SystemExit('filter panel listener anchor not found')
+              js = js.replace(listener_anchor, listener_replacement, 1)
+
+          panel.write_text(js, encoding='utf-8')
+          PY
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run package:force
+
+      - name: Commit code and VSIX
+        run: |
+          rm -f .github/workflows/add-refresh-button.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add '01-extension-扩展逻辑/CsvEditorProvider.ts' \
+                  '02-webview-表格界面/webview-filter-panel.js' \
+                  out \
+                  '07-artifacts-安装包' \
+                  .github/workflows/add-refresh-button.yml
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'feat: refresh CSV from disk and rebuild VSIX'
+          git push origin main
