@@ -246,7 +246,7 @@
     "vscode:prepublish": "npm run compile",
     "lint": "eslint '01-extension-扩展逻辑/**/*.ts'",
     "package": "python3 03-script-构建脚本/build-编译打包.py --bump",
-    "test": "npm run compile && node --test \"out/test-单元测试/**/*.test.js\"",
+    "test": "npm run compile && node --test out/test-单元测试/*.test.js",
     "test:webview": "npm run compile && node --test \"out/test-单元测试/webview-*.test.js\"",
     "test:e2e": "playwright test --config 05-e2e-浏览器测试/playwright-配置.ts",
     "test:full": "npm test && npm run test:e2e && npm run package",

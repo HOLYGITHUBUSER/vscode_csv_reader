@@ -1,5 +1,5 @@
 /**
- * 真 webview 交互：右下角多列组合过滤。
+ * 真 webview 交互：表头配置列过滤，右下角只展示条件/删除与行高。
  */
 import assert from 'assert';
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -24,26 +24,84 @@ describe('Webview column filter panel', () => {
 
   afterEach(() => h.destroy());
 
-  const addColumnFilter = (col: string, value: string, options: { mode?: string; ignoreCase?: boolean; ignoreWhitespace?: boolean } = {}) => {
-    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
-    const mode = h.document.getElementById('csvColumnFilterMode') as HTMLSelectElement;
-    const input = h.document.getElementById('csvColumnFilterValue') as HTMLInputElement;
-    const ignoreCase = h.document.getElementById('csvColumnFilterIgnoreCase') as HTMLInputElement;
-    const ignoreWhitespace = h.document.getElementById('csvColumnFilterIgnoreWhitespace') as HTMLInputElement;
-    const add = h.document.getElementById('csvColumnFilterAdd') as HTMLButtonElement;
-    column.setAttribute('data-selected-col', col);
-    column.value = `${Number(col) + 1}. ${['Name', 'City', 'Status'][Number(col)]}`;
-    mode.value = options.mode ?? 'contains';
-    ignoreCase.checked = options.ignoreCase ?? true;
-    ignoreWhitespace.checked = options.ignoreWhitespace ?? false;
-    input.value = value;
-    add.click();
-  };
   const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
-  it('posts multiple column filters without global search', () => {
-    addColumnFilter('1', 'shanghai');
-    addColumnFilter('2', 'active');
+  const openFilterEditor = (col: number) => {
+    const header = h.getHeader(col);
+    assert.ok(header);
+    const button = header.querySelector('.csv-header-filter-btn') as HTMLElement | null;
+    assert.ok(button);
+    h.fireMouse('mousedown', button, { clientX: 0, clientY: 0 });
+    h.fireMouse('click', button, { clientX: 0, clientY: 0 });
+
+    const menu = h.document.querySelector('#csvHeaderActionMenu') as HTMLElement | null;
+    assert.ok(menu);
+    const input = menu.querySelector('[data-header-filter-input]') as HTMLInputElement | null;
+    const mode = menu.querySelector('[data-header-filter-mode]') as HTMLSelectElement | null;
+    const ignoreCase = menu.querySelector('[data-header-filter-ignore-case]') as HTMLInputElement | null;
+    const ignoreWhitespace = menu.querySelector('[data-header-filter-ignore-whitespace]') as HTMLInputElement | null;
+    const apply = menu.querySelector('[data-header-action="filter-apply"]') as HTMLButtonElement | null;
+    assert.ok(input);
+    assert.ok(mode);
+    assert.ok(ignoreCase);
+    assert.ok(ignoreWhitespace);
+    assert.ok(apply);
+    return { menu, input, mode, ignoreCase, ignoreWhitespace, apply };
+  };
+
+  const applyColumnFilter = (
+    col: number,
+    value: string,
+    options: { mode?: string; ignoreCase?: boolean; ignoreWhitespace?: boolean } = {},
+  ) => {
+    const editor = openFilterEditor(col);
+    editor.input.value = value;
+    editor.input.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+    editor.mode.value = options.mode ?? 'contains';
+    editor.ignoreCase.checked = options.ignoreCase ?? true;
+    editor.ignoreWhitespace.checked = options.ignoreWhitespace ?? false;
+    editor.apply.click();
+  };
+
+  it('keeps only active-filter summaries and row height in the bottom panel', () => {
+    const panel = h.document.getElementById('csvFloatPanel');
+    const activeFilters = h.document.getElementById('csvActiveFilters') as HTMLElement | null;
+    assert.ok(panel);
+    assert.ok(activeFilters);
+    assert.strictEqual(activeFilters.hidden, true);
+    assert.ok(h.document.getElementById('csvRowHeightToggle'));
+
+    [
+      'csvGlobalSearch',
+      'csvClearFilter',
+      'csvColumnFilterColumn',
+      'csvColumnFilterMode',
+      'csvColumnFilterValue',
+      'csvColumnFilterIgnoreCase',
+      'csvColumnFilterIgnoreWhitespace',
+      'csvColumnFilterAdd',
+      'csvColumnFilterClear',
+    ].forEach(id => assert.strictEqual(h.document.getElementById(id), null, `${id} should not remain in footer`));
+  });
+
+  it('opens all filter settings directly from the selected header', () => {
+    const editor = openFilterEditor(1);
+
+    assert.strictEqual(editor.menu.getAttribute('data-menu-kind'), 'filter');
+    assert.strictEqual(editor.menu.getAttribute('role'), 'dialog');
+    assert.ok(editor.menu.textContent?.includes('过滤：2. City'));
+    assert.strictEqual(editor.mode.value, 'contains');
+    assert.strictEqual(editor.ignoreCase.checked, true);
+    assert.strictEqual(editor.ignoreWhitespace.checked, false);
+    assert.ok(editor.menu.querySelector('[data-header-action="filter-cancel"]'));
+    assert.strictEqual(editor.menu.querySelector('[data-header-action="filter-delete"]'), null);
+    assert.strictEqual(editor.menu.querySelector('[data-header-action="filter-clear-all"]'), null);
+    assert.strictEqual(h.posted.length, 0);
+  });
+
+  it('posts multiple column filters configured from their headers', () => {
+    applyColumnFilter(1, 'shanghai');
+    applyColumnFilter(2, 'active');
 
     const lastMsg = h.posted[h.posted.length - 1];
     assert.strictEqual(lastMsg.type, 'filterSort');
@@ -54,8 +112,8 @@ describe('Webview column filter panel', () => {
     });
   });
 
-  it('posts match mode and normalization options', () => {
-    addColumnFilter('1', ' Shang Hai ', {
+  it('posts match mode, case, and whitespace options from the header editor', () => {
+    applyColumnFilter(1, ' Shang Hai ', {
       mode: 'equals',
       ignoreCase: false,
       ignoreWhitespace: true,
@@ -68,80 +126,85 @@ describe('Webview column filter panel', () => {
     });
   });
 
-  it('searches column candidates by name and selects with Enter', () => {
-    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
-    column.focus();
-    column.value = 'sta';
-    column.dispatchEvent(new h.window.Event('input', { bubbles: true }));
-
-    const options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
-    assert.strictEqual(options.length, 1);
-    assert.strictEqual(options[0].textContent, '3. Status');
-
-    column.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    assert.strictEqual(column.getAttribute('data-selected-col'), '2');
-    assert.strictEqual(column.value, '3. Status');
-  });
-
-  it('refreshes candidates when query changes from no match to a matching name', () => {
-    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
-    column.focus();
-    column.value = 'zz';
-    column.dispatchEvent(new h.window.Event('input', { bubbles: true }));
-    let options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
-    assert.strictEqual(options.length, 1);
-    assert.strictEqual(options[0].textContent, '无匹配列');
-
-    column.value = 'na';
-    column.dispatchEvent(new h.window.Event('input', { bubbles: true }));
-    options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
-    assert.strictEqual(options.length, 1);
-    assert.strictEqual(options[0].textContent, '1. Name');
-  });
-
-  it('shows every column on focus (no 30-item cap; selected label is not a filter)', () => {
-    const labels = Array.from({ length: 40 }, (_, i) => `Col${String(i + 1).padStart(2, '0')}`);
-    h.destroy();
-    h = createHarness({
-      columns: 40,
-      addSerialIndex: true,
-      fontSize: 14,
-      rowHeightMode: 'compact',
-      header: { absRow: 0, cells: labels },
-      body: [{ absRow: 1, cells: labels.map((_, i) => `v${i}`) }],
-    });
-
-    const column = h.document.getElementById('csvColumnFilterColumn') as HTMLInputElement;
-    // Simulate previously selected first column still in the input.
-    column.value = '1. Col01';
-    column.setAttribute('data-selected-col', '0');
-    column.focus();
-    column.dispatchEvent(new h.window.Event('focus', { bubbles: true }));
-
-    const options = h.document.querySelectorAll('#csvColumnFilterOptions .csv-column-option');
-    assert.strictEqual(options.length, 40, 'focus should list all columns, not a truncated prefix');
-    assert.strictEqual(options[0].textContent, '1. Col01');
-    assert.strictEqual(options[39].textContent, '40. Col40');
-  });
-
-  it('renders chips and allows removing a single column filter', () => {
-    addColumnFilter('0', 'alice');
-    addColumnFilter('1', 'shanghai');
-
-    const chips = h.document.querySelectorAll('#csvColumnFilterChips .csv-filter-chip');
-    assert.strictEqual(chips.length, 2);
-
-    const removeFirst = chips[0].querySelector('button') as HTMLButtonElement;
-    removeFirst.click();
+  it('applies a header filter with Enter', () => {
+    const editor = openFilterEditor(0);
+    editor.input.value = 'Alice';
+    editor.input.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+    editor.input.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
     const lastMsg = h.posted[h.posted.length - 1];
-    assert.strictEqual(lastMsg.type, 'filterSort');
     assert.deepStrictEqual(plain(lastMsg.columnFilters), {
-      '1': { value: 'shanghai', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
+      '0': { value: 'Alice', mode: 'contains', ignoreCase: true, ignoreWhitespace: false },
     });
+    assert.strictEqual(h.document.getElementById('csvHeaderActionMenu'), null);
   });
 
-  it('syncs authoritative filters from filterSortResult messages', () => {
+  it('prefills an existing condition when the header filter is edited', () => {
+    applyColumnFilter(1, 'Shang Hai', {
+      mode: 'equals',
+      ignoreCase: false,
+      ignoreWhitespace: true,
+    });
+
+    const editor = openFilterEditor(1);
+    assert.strictEqual(editor.input.value, 'Shang Hai');
+    assert.strictEqual(editor.mode.value, 'equals');
+    assert.strictEqual(editor.ignoreCase.checked, false);
+    assert.strictEqual(editor.ignoreWhitespace.checked, true);
+    assert.strictEqual(editor.apply.textContent, '更新');
+    assert.ok(editor.menu.querySelector('[data-header-action="filter-delete"]'));
+  });
+
+  it('deletes the current filter from its header editor', () => {
+    applyColumnFilter(1, 'Shanghai');
+
+    const editor = openFilterEditor(1);
+    const deleteFilter = editor.menu.querySelector(
+      '[data-header-action="filter-delete"]',
+    ) as HTMLButtonElement | null;
+    assert.ok(deleteFilter);
+    deleteFilter.click();
+
+    const lastMsg = h.posted[h.posted.length - 1];
+    assert.deepStrictEqual(plain(lastMsg.columnFilters), {});
+    assert.strictEqual(h.document.getElementById('csvActiveFilters')?.hidden, true);
+    assert.strictEqual(h.getHeader(1)?.querySelector('.csv-header-filter-btn')?.classList.contains('active'), false);
+  });
+
+  it('shows complete condition chips and removes filters from the bottom panel', () => {
+    applyColumnFilter(0, 'Alice');
+    applyColumnFilter(1, 'Shang Hai', {
+      mode: 'equals',
+      ignoreCase: false,
+      ignoreWhitespace: true,
+    });
+
+    const activeFilters = h.document.getElementById('csvActiveFilters') as HTMLElement;
+    const divider = h.document.getElementById('csvPanelDivider') as HTMLElement;
+    let chips = h.document.querySelectorAll('#csvColumnFilterChips .csv-filter-chip');
+    assert.strictEqual(activeFilters.hidden, false);
+    assert.strictEqual(divider.hidden, false);
+    assert.strictEqual(chips.length, 2);
+    assert.strictEqual(
+      chips[1].querySelector('span')?.textContent,
+      '2. City · 等于 · 区分大小写 · 忽略空格: Shang Hai',
+    );
+
+    (chips[0].querySelector('button') as HTMLButtonElement).click();
+    let lastMsg = h.posted[h.posted.length - 1];
+    assert.deepStrictEqual(plain(lastMsg.columnFilters), {
+      '1': { value: 'Shang Hai', mode: 'equals', ignoreCase: false, ignoreWhitespace: true },
+    });
+
+    chips = h.document.querySelectorAll('#csvColumnFilterChips .csv-filter-chip');
+    (chips[0].querySelector('button') as HTMLButtonElement).click();
+    lastMsg = h.posted[h.posted.length - 1];
+    assert.deepStrictEqual(plain(lastMsg.columnFilters), {});
+    assert.strictEqual(activeFilters.hidden, true);
+    assert.strictEqual(divider.hidden, true);
+  });
+
+  it('syncs authoritative filters into the bottom summaries', () => {
     h.window.dispatchEvent(new h.window.MessageEvent('message', {
       data: {
         type: 'filterSortResult',
@@ -156,6 +219,45 @@ describe('Webview column filter panel', () => {
 
     const chip = h.document.querySelector('#csvColumnFilterChips .csv-filter-chip span');
     assert.ok(chip);
-    assert.strictEqual(chip.textContent, '3. Status 等于/忽略空格: active');
+    assert.strictEqual(
+      chip.textContent,
+      '3. Status · 等于 · 区分大小写 · 忽略空格: active',
+    );
+  });
+
+  it('places filter and sort controls side by side in the same header container', () => {
+    const header = h.getHeader(1);
+    assert.ok(header);
+    const controls = header.querySelector(':scope > .th-content');
+    const sortButton = controls?.querySelector(':scope > .sort-btn');
+    const filterButton = controls?.querySelector(':scope > .csv-header-filter-btn');
+
+    assert.ok(controls);
+    assert.ok(sortButton);
+    assert.ok(filterButton);
+    assert.strictEqual(filterButton?.textContent, '⌛︎');
+    assert.strictEqual(sortButton?.parentElement, filterButton?.parentElement);
+  });
+
+  it('keeps exactly one filter button after repeated result refreshes', () => {
+    const result = {
+      type: 'filterSortResult',
+      addSerialIndex: true,
+      sortCol: -1,
+      sortDir: null,
+      columnLabels: ['Name', 'City', 'Status'],
+      columnFilters: {},
+      rows: [],
+    };
+
+    h.window.dispatchEvent(new h.window.MessageEvent('message', { data: result }));
+    h.window.dispatchEvent(new h.window.MessageEvent('message', { data: result }));
+    h.window.dispatchEvent(new h.window.MessageEvent('message', { data: result }));
+
+    for (let col = 0; col < 3; col++) {
+      const header = h.getHeader(col);
+      assert.strictEqual(header?.querySelectorAll('.sort-btn').length, 1);
+      assert.strictEqual(header?.querySelectorAll('.csv-header-filter-btn').length, 1);
+    }
   });
 });

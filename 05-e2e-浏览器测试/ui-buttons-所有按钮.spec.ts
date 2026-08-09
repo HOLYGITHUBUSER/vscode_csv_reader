@@ -50,33 +50,25 @@ test.describe('所有UI按钮验证', () => {
     expect(pageErrors, `页面加载出错: ${pageErrors.join('\n')}`).toEqual([]);
   });
 
-  // ===== 浮动面板按钮 =====
+  // ===== 表头过滤与页脚按钮 =====
 
-  test('列过滤输入框 - 可见且可添加条件', async ({ page }) => {
-    const input = page.locator('#csvColumnFilterValue');
+  test('表头过滤按钮 - 打开输入框并可添加条件', async ({ page }) => {
+    await page.locator('.csv-header-filter-btn[data-col-filter-btn="0"]').click();
+    const input = page.locator('[data-header-filter-input]');
     await expect(input).toBeVisible();
-    await expect(page.locator('#csvGlobalSearch')).toBeVisible();
-    await input.click();
     await input.fill('Alice');
-    await page.locator('#csvColumnFilterAdd').click();
+    await page.locator('[data-header-action="filter-apply"]').click();
     const posted = await getPosted(page);
     const filterMsgs = posted.filter(m => m && m.type === 'filterSort');
     expect(filterMsgs.length, '输入过滤词后应发出filterSort消息').toBeGreaterThan(0);
   });
 
-  test('清除过滤按钮 - 添加条件后出现，点击后清空', async ({ page }) => {
-    const input = page.locator('#csvColumnFilterValue');
-    const clear = page.locator('#csvColumnFilterClear');
-
-    // 初始隐藏
-    await expect(clear).toBeHidden();
-
-    await input.fill('Bob');
-    await page.locator('#csvColumnFilterAdd').click();
-    await expect(clear).toBeVisible();
-
-    // 点击后清空
-    await clear.click();
+  test('过滤条件 - 点击摘要删除按钮后清空', async ({ page }) => {
+    await page.locator('.csv-header-filter-btn[data-col-filter-btn="0"]').click();
+    await page.locator('[data-header-filter-input]').fill('Bob');
+    await page.locator('[data-header-action="filter-apply"]').click();
+    await expect(page.locator('#csvColumnFilterChips .csv-filter-chip')).toHaveCount(1);
+    await page.locator('#csvColumnFilterChips .csv-filter-chip button').click();
     await expect(page.locator('#csvColumnFilterChips .csv-filter-chip')).toHaveCount(0);
   });
 
@@ -103,29 +95,30 @@ test.describe('所有UI按钮验证', () => {
     }
   });
 
-  test('排序按钮 - 点击后发出sortColumn消息', async ({ page }) => {
+  test('排序菜单 - 选择升序后发出sortColumn消息', async ({ page }) => {
     await clearPosted(page);
     const sortBtn = page.locator('th[data-col="0"] .sort-btn');
     await sortBtn.click();
+    await page.locator('[data-header-action="sort-asc"]').click();
     const posted = await getPosted(page);
     const sortMsgs = posted.filter(m => m && m.type === 'sortColumn');
     expect(sortMsgs.length, '点击排序按钮应发出sortColumn消息').toBeGreaterThan(0);
   });
 
-  test('排序按钮 - 三态循环 asc→desc→reset', async ({ page }) => {
+  test('排序菜单 - 可选升序、降序和恢复原始顺序', async ({ page }) => {
     await clearPosted(page);
     const sortBtn = page.locator('th[data-col="0"] .sort-btn');
 
-    // 第1次点击：升序
     await sortBtn.click();
+    await page.locator('[data-header-action="sort-asc"]').click();
     await expect(page.locator('th[data-col="0"]')).toHaveClass(/sort-asc/);
 
-    // 第2次点击：降序
     await sortBtn.click();
+    await page.locator('[data-header-action="sort-desc"]').click();
     await expect(page.locator('th[data-col="0"]')).toHaveClass(/sort-desc/);
 
-    // 第3次点击：重置
     await sortBtn.click();
+    await page.locator('[data-header-action="sort-reset"]').click();
     await expect(page.locator('th[data-col="0"]')).not.toHaveClass(/sort-asc/);
     await expect(page.locator('th[data-col="0"]')).not.toHaveClass(/sort-desc/);
   });

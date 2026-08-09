@@ -1787,16 +1787,19 @@ class CsvEditorController {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      th[data-col] .sort-btn {
+      th[data-col] .sort-btn,
+      th[data-col] .csv-header-filter-btn {
         flex: 0 0 auto;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 24px;
         height: 24px;
-        margin-right: 2px;
+        margin: 0;
+        padding: 0;
         cursor: pointer;
         user-select: none;
+        appearance: none;
         border-radius: 4px;
         border: 1.5px solid ${isDark ? '#7a7a7a' : '#666'};
         background-color: ${isDark ? '#3a3a3a' : '#f0f0f0'};
@@ -1809,13 +1812,15 @@ class CsvEditorController {
         transition: background-color 0.1s, border-color 0.1s;
       }
       th[data-col] .sort-btn::before { content: "\\2195"; display: inline-block; }
-      th[data-col] .sort-btn:hover {
+      th[data-col] .sort-btn:hover,
+      th[data-col] .csv-header-filter-btn:hover {
         background-color: ${isDark ? '#4a4a4a' : '#d8e4fb'};
         border-color: #0a84ff;
         color: #0a84ff !important;
       }
       th.sort-asc .sort-btn,
-      th.sort-desc .sort-btn {
+      th.sort-desc .sort-btn,
+      th[data-col] .csv-header-filter-btn.active {
         background-color: #0a84ff;
         border-color: #0a84ff;
         color: #ffffff !important;
@@ -1824,15 +1829,10 @@ class CsvEditorController {
       th.sort-desc .sort-btn::before { content: "\\25BC"; }
       #csvFloatPanel:hover,
       #csvFloatPanel:focus-within { opacity: 1; }
-      #csvColumnFilterPopover[hidden] { display: none !important; }
       #csvFloatPanel > * { flex:0 0 auto; }
-      .csv-column-combobox { position:relative;display:inline-flex;align-items:center; }
-      #csvColumnFilterColumn { box-sizing:border-box;height:24px;width:170px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;padding:0 6px;outline:none; }
-      #csvColumnFilterOptions { position:fixed;z-index:1250;width:min(360px,calc(100vw - 32px));max-height:min(50vh,420px);overflow:auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.98)':'rgba(255,255,255,0.98)'};box-shadow:0 4px 12px rgba(0,0,0,0.28);padding:4px; }
-      #csvColumnFilterOptions[hidden] { display:none !important; }
-      .csv-column-option { display:block;width:100%;border:0;border-radius:4px;background:transparent;color:${isDark?'#ddd':'#222'};text-align:left;cursor:pointer;font:inherit;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-      .csv-column-option:hover,
-      .csv-column-option.active { background:${isDark?'#3a3d41':'#e8f1ff'}; }
+      #csvActiveFilters[hidden],
+      #csvPanelDivider[hidden] { display:none !important; }
+      #csvActiveFilters { display:flex;align-items:center;gap:6px;min-width:0; }
       #csvColumnFilterChips { min-width:0; }
       .csv-filter-chip { display:inline-flex;align-items:center;gap:4px;max-width:220px;flex:0 0 auto;border:1px solid ${isDark?'#555':'#ccc'};border-radius:999px;background:${isDark?'#252525':'#eef3ff'};color:${isDark?'#ddd':'#222'};padding:2px 6px;font-size:0.85em; }
       .csv-filter-chip span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
@@ -1845,25 +1845,11 @@ class CsvEditorController {
     </div>
 
     <div id="csvFloatPanel" style="position:fixed;right:16px;bottom:16px;z-index:1150;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;max-width:calc(100vw - 32px);overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:6px 10px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:6px;background:${isDark?'rgba(30,30,30,0.92)':'rgba(255,255,255,0.96)'};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 12px rgba(0,0,0,0.25);opacity:0.88;transition:opacity 0.15s ease;font-size:inherit;">
-      <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">过滤:</span>
-      <span style="color:${isDark?'#888':'#999'};font-size:0.85em;" id="csvFilterStatus"></span>
-      <input id="csvGlobalSearch" type="text" placeholder="全局搜索" style="height:24px;width:140px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};padding:0 6px;font-size:inherit;outline:none;" title="在所有列中搜索，输入后 Enter 或等待自动搜索">
-      <button id="csvClearFilter" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 6px;display:none;" title="清空全局搜索">×</button>
-      <div class="csv-column-combobox">
-        <input id="csvColumnFilterColumn" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0" title="输入列名或列号搜索" placeholder="搜索列名/列号">
-        <div id="csvColumnFilterOptions" role="listbox" hidden></div>
+      <div id="csvActiveFilters" hidden>
+        <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">过滤条件:</span>
+        <div id="csvColumnFilterChips" style="display:flex;flex-wrap:nowrap;gap:6px;max-width:min(520px,50vw);overflow-x:auto;overflow-y:hidden;"></div>
       </div>
-      <select id="csvColumnFilterMode" title="匹配方式" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};font-size:inherit;">
-        <option value="contains">包含</option>
-        <option value="equals">等于</option>
-      </select>
-      <input id="csvColumnFilterValue" type="text" placeholder="过滤词，Enter 添加" style="height:24px;width:150px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};padding:0 6px;font-size:inherit;outline:none;">
-      <label title="匹配时忽略大小写" style="display:inline-flex;align-items:center;gap:3px;color:${isDark?'#ccc':'#333'};font-size:0.9em;"><input id="csvColumnFilterIgnoreCase" type="checkbox" checked>忽略大小写</label>
-      <label title="匹配时删除所有空白字符再比较" style="display:inline-flex;align-items:center;gap:3px;color:${isDark?'#ccc':'#333'};font-size:0.9em;"><input id="csvColumnFilterIgnoreWhitespace" type="checkbox">忽略空格</label>
-      <button id="csvColumnFilterAdd" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;">添加</button>
-      <button id="csvColumnFilterClear" type="button" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;display:none;">清空</button>
-      <div id="csvColumnFilterChips" style="display:flex;flex-wrap:nowrap;gap:6px;max-width:min(360px,35vw);overflow-x:auto;overflow-y:hidden;"></div>
-      <span style="flex:0 0 auto;width:1px;height:18px;background:${isDark?'#555':'#ccc'};margin:0 2px;"></span>
+      <span id="csvPanelDivider" hidden style="flex:0 0 auto;width:1px;height:18px;background:${isDark?'#555':'#ccc'};margin:0 2px;"></span>
       <span style="font-weight:600;color:${isDark?'#ccc':'#333'};">行高:</span>
       <button id="csvRowHeightToggle" type="button" data-mode="${rowHeightMode}" style="height:24px;border:1px solid ${isDark?'#555':'#ccc'};border-radius:3px;background:${isDark?'#2d2d2d':'#f5f5f5'};color:${isDark?'#d4d4d4':'#333'};cursor:pointer;font-size:inherit;padding:0 8px;" title="点击切换 紧凑 ↔ 自然折行（也可拖动行底边手动调整）">${rowHeightMode === 'compact' ? '紧凑' : '自然折行'}</button>
     </div>

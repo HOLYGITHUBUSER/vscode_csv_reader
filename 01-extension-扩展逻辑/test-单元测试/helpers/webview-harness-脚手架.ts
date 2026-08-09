@@ -131,21 +131,11 @@ function buildHtml(cfg: HarnessConfig): string {
 
 <!-- Floating filter / rowHeight panel（webview-main.js 启动时会 querySelector 它们） -->
 <div id="csvFloatPanel">
-  <span id="csvFilterStatus"></span>
-  <div class="csv-column-combobox">
-    <input id="csvColumnFilterColumn" type="text" role="combobox" aria-expanded="false" aria-controls="csvColumnFilterOptions" data-selected-col="0">
-    <div id="csvColumnFilterOptions" role="listbox" hidden></div>
+  <div id="csvActiveFilters" hidden>
+    <span>过滤条件:</span>
+    <div id="csvColumnFilterChips"></div>
   </div>
-  <select id="csvColumnFilterMode">
-    <option value="contains">包含</option>
-    <option value="equals">等于</option>
-  </select>
-  <input id="csvColumnFilterValue" type="text">
-  <label><input id="csvColumnFilterIgnoreCase" type="checkbox" checked>忽略大小写</label>
-  <label><input id="csvColumnFilterIgnoreWhitespace" type="checkbox">忽略空格</label>
-  <button id="csvColumnFilterAdd" type="button"></button>
-  <button id="csvColumnFilterClear" type="button"></button>
-  <div id="csvColumnFilterChips"></div>
+  <span id="csvPanelDivider" hidden></span>
   <button id="csvRowHeightToggle" type="button" data-mode="${rowMode}"></button>
 </div>
 

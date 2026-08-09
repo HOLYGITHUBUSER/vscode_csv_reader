@@ -84,6 +84,11 @@ const getCellTextForData = cell => {
   tmp.innerHTML = compactBody.getAttribute(COMPACT_ORIG_HTML_ATTR) || '';
   return tmp.textContent || '';
 };
+// Initial table markup is already present when this script runs, unlike rows
+// inserted by chunking or filtering below. Normalize it once in compact mode.
+if (table?.classList.contains('row-compact')) {
+  applyCompactNewlineMarkers(table);
+}
 const dragIndicator = document.createElement('div');
 dragIndicator.style.position = 'fixed';
 dragIndicator.style.pointerEvents = 'none';
@@ -1228,7 +1233,11 @@ table.addEventListener('click', e => {
   if (Number.isNaN(col)) return;
   e.preventDefault();
   e.stopPropagation();
-  toggleSortOnColumn(col);
+  if (window.CsvFilterPanelBridge && typeof window.CsvFilterPanelBridge.openSortMenu === 'function') {
+    window.CsvFilterPanelBridge.openSortMenu(col, sortBtn);
+  } else {
+    toggleSortOnColumn(col);
+  }
 });
 
 document.addEventListener('click', (e) => {
@@ -1278,6 +1287,20 @@ const updateSortHeaderIndicator = () => {
   const th = table.querySelector(`th[data-col="${currentSortCol}"]`);
   if (th) th.classList.add(currentSortAsc ? 'sort-asc' : 'sort-desc');
 };
+const sortColumn = (col, ascending) => {
+  currentSortCol = col;
+  currentSortAsc = ascending !== false;
+  persistSortState();
+  updateSortHeaderIndicator();
+  vscode.postMessage({ type: 'sortColumn', index: col, ascending: currentSortAsc });
+};
+const resetSortOrder = () => {
+  currentSortCol = null;
+  currentSortAsc = true;
+  persistSortState();
+  updateSortHeaderIndicator();
+  vscode.postMessage({ type: 'resetSort' });
+};
 /* Tri-state sort cycle per column:
  *   none → asc → desc → none (restore original) → asc → …
  * Switching to a different column always starts fresh at asc.
@@ -1286,26 +1309,15 @@ const updateSortHeaderIndicator = () => {
  */
 const toggleSortOnColumn = col => {
   if (currentSortCol !== col) {
-    currentSortCol = col;
-    currentSortAsc = true;
-    persistSortState();
-    updateSortHeaderIndicator();
-    vscode.postMessage({ type: 'sortColumn', index: col, ascending: true });
+    sortColumn(col, true);
     return;
   }
   if (currentSortAsc) {
-    currentSortAsc = false;
-    persistSortState();
-    updateSortHeaderIndicator();
-    vscode.postMessage({ type: 'sortColumn', index: col, ascending: false });
+    sortColumn(col, false);
     return;
   }
   // Was desc → back to original.
-  currentSortCol = null;
-  currentSortAsc = true;
-  persistSortState();
-  updateSortHeaderIndicator();
-  vscode.postMessage({ type: 'resetSort' });
+  resetSortOrder();
 };
 
 table.addEventListener('mousedown', e => {
@@ -2448,6 +2460,8 @@ try { updateSortHeaderIndicator(); } catch {}
 window.CsvWebviewBridge = {
   postMessage: msg => vscode.postMessage(msg),
   getSortState: () => ({ currentSortCol, currentSortAsc }),
+  sortColumn,
+  resetSort: resetSortOrder,
   applyCompactNewlineMarkers,
   restoreCompactNewlineMarkers,
 };

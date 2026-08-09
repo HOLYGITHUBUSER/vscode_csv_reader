@@ -226,7 +226,7 @@ export function generateTableAndChunks(options: CsvTableRenderOptions): CsvTable
     tableHtml += `<thead><tr>${addSerialIndex ? `<th tabindex="0" style="min-width: ${serialIndexWidthCh}ch; max-width: ${serialIndexWidthCh}ch; border: 1px solid ${cellBorder(isDark)}; background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; color: #888;"></th>` : ''}`;
     for (let i = 0; i < numColumns; i++) {
       const safe = helpers.formatCellContent(headerRow[i] || '', clickableLinks);
-      tableHtml += `<th tabindex="0" style="min-width: max(${Math.min(columnWidths[i] || 0, 100)}ch, 60px); max-width: 100ch; border: 1px solid ${cellBorder(isDark)}; background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; color: ${columnColors[i]}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;" data-row="${offset}" data-col="${i}"><span class="th-content"><span class="th-label">${safe}</span><span class="sort-btn" data-sort-btn="1" role="button" aria-label="Sort column" title="点击切换：A-Z → Z-A → 原始"></span></span></th>`;
+      tableHtml += `<th tabindex="0" style="min-width: max(${Math.min(columnWidths[i] || 0, 100)}ch, 60px); max-width: 100ch; border: 1px solid ${cellBorder(isDark)}; background-color: ${isDark ? '#1e1e1e' : '#ffffff'}; color: ${columnColors[i]}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;" data-row="${offset}" data-col="${i}"><span class="th-content"><span class="th-label">${safe}</span><span class="sort-btn" data-sort-btn="1" role="button" aria-label="排序 ${safe}" title="排序选项"></span></span></th>`;
     }
     tableHtml += `</tr></thead><tbody>`;
   } else {
